@@ -1,0 +1,12 @@
+{
+  "name": "Lớp học Văn minh",
+  "short_name": "LHVM",
+  "description": "Ứng dụng chấm điểm phong trào Lớp học văn minh — Trường THPT FPT Đà Nẵng",
+  "start_url": "/judge",
+  "display": "standalone",
+  "background_color": "#f7f9fb",
+  "theme_color": "#1a73c7",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
