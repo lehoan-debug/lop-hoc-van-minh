@@ -79,6 +79,11 @@ export function AdjustmentsPanel({
                 </td>
                 <td className="px-3 py-2 max-w-xs truncate" title={a.description}>
                   {a.description}
+                  {(a.studentName || a.studentCode) && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      ({[a.studentName, a.studentCode].filter(Boolean).join(" - ")})
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2">{a.recordedByName || a.recordedByEmail}</td>
                 <td className="px-3 py-2">
@@ -139,6 +144,7 @@ function AdjustmentFormDialog({
   const [classId, setClassId] = React.useState(existing?.classId ?? classes[0]?.classId ?? "");
   const [points, setPoints] = React.useState(String(existing?.points ?? 1));
   const [studentName, setStudentName] = React.useState(existing?.studentName ?? "");
+  const [studentCode, setStudentCode] = React.useState(existing?.studentCode ?? "");
   const [description, setDescription] = React.useState(existing?.description ?? "");
   const [location, setLocation] = React.useState(existing?.location ?? "");
   const [evidence, setEvidence] = React.useState(existing?.evidence ?? "");
@@ -161,6 +167,7 @@ function AdjustmentFormDialog({
         type,
         points: Number(points) || 1,
         studentName,
+        studentCode,
         description,
         location,
         evidence,
@@ -230,9 +237,20 @@ function AdjustmentFormDialog({
             </Select>
           </div>
 
-          <div>
-            <Label>Học sinh liên quan (nếu có)</Label>
-            <Input value={studentName} onChange={(e) => setStudentName(e.target.value)} className="mt-1" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Học sinh liên quan (nếu có)</Label>
+              <Input value={studentName} onChange={(e) => setStudentName(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Mã học sinh (nếu có)</Label>
+              <Input
+                value={studentCode}
+                onChange={(e) => setStudentCode(e.target.value)}
+                placeholder="Mã FSP..."
+                className="mt-1"
+              />
+            </div>
           </div>
 
           <div>

@@ -76,7 +76,11 @@ Tổng: 15 + 8 + 16 = **39 lớp**.
 
 Mỗi bảng chấm theo khối (BC10/BC11/BC12) có **2 bảng giống hệt nhau** (cùng 11 tiêu chí, cùng danh sách lớp), tiếp nối nhau, đều có ghi chú cuối bảng: *"Lưu ý: Ban giám khảo chỉ điền cho tiêu chí từ 1 – 11 và tính tổng điểm. Mục điểm cộng/điểm trừ sẽ được BTC ghi nhận trong ngày."*
 
-Văn bản **không có nhãn chữ "Sáng"/"Chiều"** gắn trực tiếp vào từng bảng — việc có 2 bảng/khối được suy ra từ KH mục II ("Tần suất chấm: 02 lần/ngày vào đầu giờ học buổi sáng và cuối giờ học buổi chiều"). Xem mục tương ứng trong `BUSINESS_RULES_REVIEW.md`.
+**Nhãn buổi được xác định rõ trong phần header của từng trang** (`word/header1.xml`, `word/header2.xml` — không nằm trong `document.xml` nên cần đọc riêng), nguyên văn:
+- Header bảng thứ nhất: `"Buổi sáng - Ngày: ______________________  Người chấm: ________________________________________  Khối {10|11|12}"`
+- Header bảng thứ hai: `"Buổi chiều - Ngày: ______________________  Người chấm: ________________________________________  Khối {10|11|12}"`
+
+⇒ Bảng thứ nhất = buổi **Sáng**, bảng thứ hai = buổi **Chiều** — đây là dữ liệu nghiệp vụ đã xác định từ chính tài liệu gốc, khớp với KH mục II ("02 lần/ngày vào đầu giờ học buổi sáng và cuối giờ học buổi chiều"), **không phải suy luận**.
 
 ## 6. Điểm thưởng / điểm trừ (KH mục III.3, bảng "Điểm thưởng | Điểm trừ")
 

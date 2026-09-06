@@ -185,9 +185,9 @@ export function computeMonthlyRankingForGrade(params: {
 
       return {
         date,
-        dailyScore: result.dailyScore,
-        judgeScore: result.judgeScore,
-        maxPossibleJudgeScore: result.maxPossibleJudgeScore,
+        dailyScore: result.officialDailyScore,
+        judgeScore: result.officialJudgeScore,
+        maxPossibleJudgeScore: result.maxPossibleOfficialScore,
       };
     });
 
@@ -211,4 +211,93 @@ export function computeMonthlyRankingForGrade(params: {
   });
 
   return rankClasses(inputs);
+}
+
+// ---------- Số liệu tham khảo khi combineMode = "UNCONFIRMED" ----------
+
+export interface ClassDailyScoreSummary {
+  classId: string;
+  className: string;
+  grade: Grade;
+  daysWithMorning: number;
+  daysWithAfternoon: number;
+  daysComplete: number;
+  /** Trung bình điểm buổi Sáng qua các ngày đã chấm buổi Sáng. */
+  avgMorning: number | null;
+  /** Trung bình điểm buổi Chiều qua các ngày đã chấm buổi Chiều. */
+  avgAfternoon: number | null;
+  /** Trung bình của (tổng 2 buổi mỗi ngày) — số liệu tham khảo nếu BTC chọn SUM. */
+  avgOfSum: number | null;
+  /** Trung bình của (trung bình 2 buổi mỗi ngày) — số liệu tham khảo nếu BTC chọn AVERAGE. */
+  avgOfAverage: number | null;
+}
+
+/**
+ * Số liệu điểm sáng/chiều/tổng/trung bình theo lớp trong tháng — dùng để
+ * hiển thị TRÊN /admin/ranking khi `Settings.DAILY_SCORE_COMBINE_MODE`
+ * còn là "UNCONFIRMED" (BTC chưa xác nhận công thức điểm ngày). Đây là số
+ * liệu THAM KHẢO, không phải kết quả xếp hạng chính thức.
+ * Xem BUSINESS_RULES_REVIEW.md mục 1.
+ */
+export function computeClassDailyScoreSummary(params: {
+  classes: ClassConfig[];
+  scoresOfMonth: ScoreRecord[];
+  yearMonth: string;
+}): ClassDailyScoreSummary[] {
+  const { classes, scoresOfMonth, yearMonth } = params;
+
+  const scoresByClass = new Map<string, ScoreRecord[]>();
+  for (const s of scoresOfMonth) {
+    if (ymKey(s.date) !== yearMonth) continue;
+    const arr = scoresByClass.get(s.classId) ?? [];
+    arr.push(s);
+    scoresByClass.set(s.classId, arr);
+  }
+
+  const avg = (values: number[]): number | null =>
+    values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+
+  return classes.map((klass) => {
+    const classScores = scoresByClass.get(klass.classId) ?? [];
+    const dates = Array.from(new Set(classScores.map((s) => s.date))).sort();
+
+    const morningScores: number[] = [];
+    const afternoonScores: number[] = [];
+    const sumPerDay: number[] = [];
+    const avgPerDay: number[] = [];
+    let daysComplete = 0;
+
+    for (const date of dates) {
+      const morning = classScores.find((s) => s.date === date && s.session === "MORNING");
+      const afternoon = classScores.find(
+        (s) => s.date === date && s.session === "AFTERNOON",
+      );
+      if (morning) morningScores.push(morning.totalCriteriaScore);
+      if (afternoon) afternoonScores.push(afternoon.totalCriteriaScore);
+      if (morning && afternoon) {
+        daysComplete++;
+        sumPerDay.push(morning.totalCriteriaScore + afternoon.totalCriteriaScore);
+        avgPerDay.push((morning.totalCriteriaScore + afternoon.totalCriteriaScore) / 2);
+      } else if (morning) {
+        sumPerDay.push(morning.totalCriteriaScore);
+        avgPerDay.push(morning.totalCriteriaScore);
+      } else if (afternoon) {
+        sumPerDay.push(afternoon.totalCriteriaScore);
+        avgPerDay.push(afternoon.totalCriteriaScore);
+      }
+    }
+
+    return {
+      classId: klass.classId,
+      className: klass.className,
+      grade: klass.grade,
+      daysWithMorning: morningScores.length,
+      daysWithAfternoon: afternoonScores.length,
+      daysComplete,
+      avgMorning: avg(morningScores),
+      avgAfternoon: avg(afternoonScores),
+      avgOfSum: avg(sumPerDay),
+      avgOfAverage: avg(avgPerDay),
+    };
+  });
 }

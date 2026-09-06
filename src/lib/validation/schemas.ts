@@ -43,6 +43,7 @@ export const createAdjustmentSchema = z.object({
   type: z.enum(["BONUS", "PENALTY"]),
   points: z.number().int().min(1).max(10).default(1),
   studentName: z.string().max(200).optional().default(""),
+  studentCode: z.string().max(50).optional().default(""),
   description: z.string().min(1, "Vui lòng nhập nội dung").max(1000),
   location: z.string().max(200).optional().default(""),
   evidence: z.string().max(1000).optional().default(""),
@@ -65,6 +66,14 @@ export const updateUserSchema = z.object({
 export const updateSettingSchema = z.object({
   key: z.string().min(1),
   value: z.string(),
+});
+
+export const manualRankingDecisionSchema = z.object({
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/, "Tháng không hợp lệ"),
+  grade: gradeSchema,
+  classId: z.string().min(1),
+  manualRankingDecision: z.number().int().min(1),
+  decisionReason: z.string().min(1, "Vui lòng nhập lý do quyết định").max(1000),
 });
 
 export const dashboardFilterSchema = z.object({

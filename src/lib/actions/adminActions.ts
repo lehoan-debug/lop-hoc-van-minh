@@ -8,6 +8,7 @@ import {
   editScoreSchema,
   updateUserSchema,
   updateSettingSchema,
+  manualRankingDecisionSchema,
 } from "@/lib/validation/schemas";
 import {
   createAdjustment,
@@ -21,6 +22,7 @@ import {
   updateSetting,
   updateClassActive,
   updateCriterion,
+  upsertRankingDecision,
   appendAuditLog,
 } from "@/lib/google/sheets";
 import { CRITERION_KEYS, type CriterionKey } from "@/types";
@@ -304,7 +306,9 @@ export async function updateCriterionDescriptionAction(
 ): Promise<ActionResult> {
   try {
     const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
-    const ok = await updateCriterion(criterionId, { description });
+    // Khi Admin tự cập nhật mô tả (vd. bổ sung phần bị cắt cụt của tiêu chí 7),
+    // coi như đã xử lý xong — tự động tắt cờ needsReview.
+    const ok = await updateCriterion(criterionId, { description, needsReview: false });
     if (!ok) return fail("Không tìm thấy tiêu chí.");
 
     await appendAuditLog({
@@ -318,6 +322,49 @@ export async function updateCriterionDescriptionAction(
 
     revalidatePath("/admin/settings");
     revalidatePath("/judge");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+// ---------- Ranking Decisions (quyết định thủ công khi đồng hạng) ----------
+
+export async function saveManualRankingDecisionAction(raw: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    const parsed = manualRankingDecisionSchema.safeParse(raw);
+    if (!parsed.success) return fail("Dữ liệu không hợp lệ.");
+    const input = parsed.data;
+
+    const classes = await getClasses();
+    const klass = classes.find((c) => c.classId === input.classId);
+    if (!klass) return fail("Lớp không tồn tại.");
+
+    await upsertRankingDecision({
+      yearMonth: input.yearMonth,
+      grade: input.grade,
+      classId: input.classId,
+      className: klass.className,
+      manualRankingDecision: input.manualRankingDecision,
+      decisionReason: input.decisionReason,
+      decidedByEmail: user.email,
+      decidedByName: user.name,
+    });
+
+    await appendAuditLog({
+      userEmail: user.email,
+      userName: user.name,
+      action: "SAVE_RANKING_DECISION",
+      entityType: "RankingDecision",
+      entityId: `${input.yearMonth}:${input.classId}`,
+      details: {
+        rank: input.manualRankingDecision,
+        reason: input.decisionReason,
+      },
+    });
+
+    revalidatePath("/admin/ranking");
     return { ok: true, data: undefined };
   } catch (e) {
     return handleKnownError(e);

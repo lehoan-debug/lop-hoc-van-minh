@@ -12,6 +12,7 @@ export const SHEET_NAMES = {
   ADJUSTMENTS: "Adjustments",
   SETTINGS: "Settings",
   AUDIT_LOG: "AuditLog",
+  RANKING_DECISIONS: "RankingDecisions",
 } as const;
 
 export type SheetName = (typeof SHEET_NAMES)[keyof typeof SHEET_NAMES];
@@ -34,6 +35,7 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "description",
     "active",
     "sortOrder",
+    "needsReview",
   ],
   [SHEET_NAMES.SCORES]: [
     "submissionId",
@@ -71,6 +73,7 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "type",
     "points",
     "studentName",
+    "studentCode",
     "description",
     "location",
     "evidence",
@@ -90,12 +93,35 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "entityId",
     "detailsJson",
   ],
+  [SHEET_NAMES.RANKING_DECISIONS]: [
+    "decisionId",
+    "yearMonth",
+    "grade",
+    "classId",
+    "className",
+    "manualRankingDecision",
+    "decisionReason",
+    "decidedByEmail",
+    "decidedByName",
+    "decidedAt",
+  ],
 };
 
-/** Giá trị mặc định cho sheet Settings — dùng khi khởi tạo và khi sheet
- * thiếu key (fallback an toàn thay vì crash). Xem BUSINESS_RULES_REVIEW.md. */
+/**
+ * Giá trị mặc định cho sheet Settings — dùng khi khởi tạo và khi sheet
+ * thiếu key (fallback an toàn thay vì crash).
+ *
+ * `DAILY_SCORE_COMBINE_MODE = "UNCONFIRMED"`: KH không nêu rõ cách kết hợp
+ * điểm buổi Sáng + Chiều thành điểm ngày (cộng tổng hay trung bình) — KHÔNG
+ * tự chọn SUM làm mặc định để tránh áp một công thức chưa được BTC xác nhận
+ * lên kết quả xếp hạng thật. Xem BUSINESS_RULES_REVIEW.md mục 1.
+ *
+ * `GRADING_SCALE_ENABLED = "FALSE"`: dự trù cho tiêu chí phụ "mức xếp loại
+ * cao hơn" (KH mục III.4.a) — chưa có thang xếp loại chính thức nên chưa có
+ * code nào đọc/dùng cờ này. Xem BUSINESS_RULES_REVIEW.md mục 5.
+ */
 export const DEFAULT_SETTINGS: Record<string, string> = {
-  DAILY_SCORE_COMBINE_MODE: "SUM",
+  DAILY_SCORE_COMBINE_MODE: "UNCONFIRMED",
   MORNING_SESSION_START: "07:00",
   MORNING_SESSION_END: "07:45",
   AFTERNOON_SESSION_START: "12:30",
@@ -103,4 +129,5 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   ALLOW_OUTSIDE_HOURS_SCORING: "TRUE",
   CURRENT_SCHOOL_YEAR: "2026-2027",
   ENABLED_GRADES: "10,11,12",
+  GRADING_SCALE_ENABLED: "FALSE",
 };

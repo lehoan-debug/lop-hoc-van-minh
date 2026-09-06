@@ -21,6 +21,8 @@ import type {
   Grade,
   Session_,
   AdjustmentType,
+  RankingDecisionRecord,
+  DailyScoreCombineModeSetting,
 } from "@/types";
 import { CRITERION_KEYS } from "@/types";
 
@@ -149,6 +151,7 @@ function rowToCriterion(row: SheetRow): CriterionConfig {
     description: row.description ?? "",
     active: parseBool(row.active),
     sortOrder: Number(row.sortOrder) || 0,
+    needsReview: parseBool(row.needsReview),
   };
 }
 
@@ -163,15 +166,25 @@ export async function getCriteria(opts?: { activeOnly?: boolean }): Promise<
 
 export async function updateCriterion(
   criterionId: string,
-  updates: { active?: boolean; description?: string },
+  updates: { active?: boolean; description?: string; needsReview?: boolean },
 ): Promise<boolean> {
   const patch: SheetRow = {};
   if (updates.active !== undefined) patch.active = updates.active ? "TRUE" : "FALSE";
   if (updates.description !== undefined) patch.description = updates.description;
+  if (updates.needsReview !== undefined)
+    patch.needsReview = updates.needsReview ? "TRUE" : "FALSE";
   return updateRowWhere(SHEET_NAMES.CRITERIA, (row) => row.criterionId === criterionId, patch);
 }
 
 // ---------- Settings ----------
+
+function parseCombineMode(v: string): DailyScoreCombineModeSetting {
+  if (v === "SUM" || v === "AVERAGE") return v;
+  // Bất kỳ giá trị nào khác (kể cả trống/không hợp lệ) đều coi là chưa xác
+  // nhận — KHÔNG mặc định về SUM để tránh áp công thức chưa được BTC duyệt.
+  // Xem BUSINESS_RULES_REVIEW.md mục 1.
+  return "UNCONFIRMED";
+}
 
 export async function getSettings(): Promise<AppSettings> {
   const rows = await getAllRows(SHEET_NAMES.SETTINGS);
@@ -179,8 +192,7 @@ export async function getSettings(): Promise<AppSettings> {
   const get = (key: string) => map.get(key) ?? DEFAULT_SETTINGS[key] ?? "";
 
   return {
-    DAILY_SCORE_COMBINE_MODE:
-      get("DAILY_SCORE_COMBINE_MODE") === "AVERAGE" ? "AVERAGE" : "SUM",
+    DAILY_SCORE_COMBINE_MODE: parseCombineMode(get("DAILY_SCORE_COMBINE_MODE")),
     MORNING_SESSION_START: get("MORNING_SESSION_START"),
     MORNING_SESSION_END: get("MORNING_SESSION_END"),
     AFTERNOON_SESSION_START: get("AFTERNOON_SESSION_START"),
@@ -191,6 +203,7 @@ export async function getSettings(): Promise<AppSettings> {
       .split(",")
       .map((g) => g.trim())
       .filter((g): g is Grade => g === "10" || g === "11" || g === "12"),
+    GRADING_SCALE_ENABLED: parseBool(get("GRADING_SCALE_ENABLED")),
   };
 }
 
@@ -397,6 +410,7 @@ function rowToAdjustment(row: SheetRow): AdjustmentRecord {
     type: (row.type as AdjustmentType) ?? "BONUS",
     points: Number(row.points) || 0,
     studentName: row.studentName ?? "",
+    studentCode: row.studentCode ?? "",
     description: row.description ?? "",
     location: row.location ?? "",
     evidence: row.evidence ?? "",
@@ -435,6 +449,7 @@ export interface CreateAdjustmentInput {
   type: AdjustmentType;
   points: number;
   studentName?: string;
+  studentCode?: string;
   description: string;
   location?: string;
   evidence?: string;
@@ -455,6 +470,7 @@ export async function createAdjustment(
     type: input.type,
     points: Math.abs(input.points),
     studentName: input.studentName ?? "",
+    studentCode: input.studentCode ?? "",
     description: input.description,
     location: input.location ?? "",
     evidence: input.evidence ?? "",
@@ -478,6 +494,7 @@ export async function editAdjustment(
   if (updates.type) patch.type = updates.type;
   if (updates.points !== undefined) patch.points = String(Math.abs(updates.points));
   if (updates.studentName !== undefined) patch.studentName = updates.studentName;
+  if (updates.studentCode !== undefined) patch.studentCode = updates.studentCode;
   if (updates.description !== undefined) patch.description = updates.description;
   if (updates.location !== undefined) patch.location = updates.location;
   if (updates.evidence !== undefined) patch.evidence = updates.evidence;
@@ -543,4 +560,89 @@ export async function getAuditLogs(filter?: {
   logs = logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   if (filter?.limit) logs = logs.slice(0, filter.limit);
   return logs;
+}
+
+// ---------- Ranking Decisions (quyết định thủ công khi đồng hạng) ----------
+
+function rowToRankingDecision(row: SheetRow): RankingDecisionRecord {
+  return {
+    decisionId: row.decisionId ?? "",
+    yearMonth: row.yearMonth ?? "",
+    grade: (row.grade as Grade) ?? "10",
+    classId: row.classId ?? "",
+    className: row.className ?? "",
+    manualRankingDecision: Number(row.manualRankingDecision) || 0,
+    decisionReason: row.decisionReason ?? "",
+    decidedByEmail: row.decidedByEmail ?? "",
+    decidedByName: row.decidedByName ?? "",
+    decidedAt: row.decidedAt ?? "",
+  };
+}
+
+export async function getRankingDecisions(filter: {
+  yearMonth: string;
+  grade?: Grade;
+}): Promise<RankingDecisionRecord[]> {
+  const rows = await getAllRows(SHEET_NAMES.RANKING_DECISIONS, { cache: false });
+  let decisions = rows.map(rowToRankingDecision).filter((d) => d.yearMonth === filter.yearMonth);
+  if (filter.grade) decisions = decisions.filter((d) => d.grade === filter.grade);
+  return decisions;
+}
+
+export interface SaveRankingDecisionInput {
+  yearMonth: string;
+  grade: Grade;
+  classId: string;
+  className: string;
+  manualRankingDecision: number;
+  decisionReason: string;
+  decidedByEmail: string;
+  decidedByName: string;
+}
+
+/** Ghi hoặc cập nhật quyết định xếp hạng thủ công cho 1 lớp trong 1 tháng —
+ * khoá logic (yearMonth, classId). Không tự động chọn lớp thắng khi đồng
+ * hạng, chỉ lưu lại quyết định do Admin/SUPER_ADMIN nhập. */
+export async function upsertRankingDecision(
+  input: SaveRankingDecisionInput,
+): Promise<RankingDecisionRecord> {
+  const now = nowIso();
+  const record: RankingDecisionRecord = {
+    decisionId: randomUUID(),
+    yearMonth: input.yearMonth,
+    grade: input.grade,
+    classId: input.classId,
+    className: input.className,
+    manualRankingDecision: input.manualRankingDecision,
+    decisionReason: input.decisionReason,
+    decidedByEmail: input.decidedByEmail.trim().toLowerCase(),
+    decidedByName: input.decidedByName,
+    decidedAt: now,
+  };
+
+  const row: SheetRow = {
+    yearMonth: record.yearMonth,
+    grade: record.grade,
+    classId: record.classId,
+    className: record.className,
+    manualRankingDecision: String(record.manualRankingDecision),
+    decisionReason: record.decisionReason,
+    decidedByEmail: record.decidedByEmail,
+    decidedByName: record.decidedByName,
+    decidedAt: record.decidedAt,
+  };
+
+  const updated = await updateRowWhere(
+    SHEET_NAMES.RANKING_DECISIONS,
+    (r) => r.yearMonth === input.yearMonth && r.classId === input.classId,
+    row,
+  );
+
+  if (updated) return record;
+
+  await appendRow(SHEET_NAMES.RANKING_DECISIONS, {
+    decisionId: record.decisionId,
+    ...row,
+  });
+  return record;
 }

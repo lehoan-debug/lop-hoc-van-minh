@@ -1,17 +1,24 @@
 /**
  * Khởi tạo cấu trúc Google Sheet cho ứng dụng "Lớp học Văn minh".
  *
- * Tạo (nếu chưa có) 7 sheet: Users, Classes, Criteria, Scores, Adjustments,
- * Settings, AuditLog kèm header đúng thứ tự cột, sau đó nạp dữ liệu mẫu cho
- * Classes / Criteria (trích nguyên văn từ 4 file Word — xem src/config/) và
- * giá trị mặc định cho Settings. KHÔNG tự sáng tác dữ liệu ngoài 4 tài liệu
- * gốc — xem docs/BUSINESS_ANALYSIS.md.
+ * Tạo (nếu chưa có) 8 sheet: Users, Classes, Criteria, Scores, Adjustments,
+ * Settings, AuditLog, RankingDecisions kèm header đúng thứ tự cột, sau đó nạp
+ * dữ liệu mẫu cho Classes / Criteria (trích nguyên văn từ 4 file Word — xem
+ * src/config/) và giá trị mặc định cho Settings. KHÔNG tự sáng tác dữ liệu
+ * ngoài 4 tài liệu gốc — xem docs/BUSINESS_ANALYSIS.md.
  *
  * Chạy: npm run init-sheet
  * Yêu cầu: đã cấu hình .env.local với GOOGLE_SHEETS_SPREADSHEET_ID,
  * GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY, và đã
  * share spreadsheet cho service account với quyền Editor.
  * Xem docs/GOOGLE_SHEETS_SETUP.md để biết chi tiết từng bước.
+ *
+ * Lưu ý kỹ thuật: script chạy bằng `tsx --conditions=react-server` (xem
+ * package.json) — cờ này bắt buộc vì `src/lib/google/sheetRepo.ts` import
+ * "server-only" (gói đánh dấu module chỉ dùng trong React Server Component);
+ * gói này chỉ resolve về bản no-op khi có export condition "react-server",
+ * điều mà Next.js tự thêm khi build app nhưng Node chạy tsx trực tiếp thì
+ * không — nếu thiếu cờ này, script sẽ báo lỗi ngay khi import.
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -71,6 +78,7 @@ async function main() {
       description: c.description,
       active: c.active ? "TRUE" : "FALSE",
       sortOrder: String(c.sortOrder),
+      needsReview: c.needsReview ? "TRUE" : "FALSE",
     })),
     "tiêu chí chấm điểm",
   );

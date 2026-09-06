@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,18 +97,24 @@ function GeneralSettingsForm({ settings }: { settings: AppSettings }) {
       <div>
         <Label>Cách tính điểm chấm BGK trong ngày (Sáng + Chiều)</Label>
         <p className="mb-1 text-xs text-muted-foreground">
-          Xem BUSINESS_RULES_REVIEW.md mục 1 — Kế hoạch chưa nêu rõ, cần BTC xác nhận.
+          Kế hoạch chưa nêu rõ cách kết hợp — xem BUSINESS_RULES_REVIEW.md mục 1. Khi để
+          &quot;Chưa xác nhận&quot;, hệ thống KHÔNG tạo điểm ngày/xếp hạng chính thức nào (chỉ hiển
+          thị số liệu tham khảo tại Xếp hạng), tránh áp một công thức sai lên kết quả thi đua thật.
         </p>
         <Select
           value={form.DAILY_SCORE_COMBINE_MODE}
           onValueChange={(v) =>
-            setForm((f) => ({ ...f, DAILY_SCORE_COMBINE_MODE: v as "SUM" | "AVERAGE" }))
+            setForm((f) => ({
+              ...f,
+              DAILY_SCORE_COMBINE_MODE: v as AppSettings["DAILY_SCORE_COMBINE_MODE"],
+            }))
           }
         >
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-64">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="UNCONFIRMED">Chưa xác nhận (mặc định — an toàn)</SelectItem>
             <SelectItem value="SUM">Cộng tổng 2 buổi (tối đa 22)</SelectItem>
             <SelectItem value="AVERAGE">Trung bình 2 buổi (tối đa 11)</SelectItem>
           </SelectContent>
@@ -266,7 +272,15 @@ function CriteriaTogglePanel({ criteria }: { criteria: CriterionConfig[] }) {
         <div key={c.criterionId} className="rounded-[var(--radius)] border border-border bg-card p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
-              <p className="text-sm font-semibold">Tiêu chí {c.criterionNumber}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">Tiêu chí {c.criterionNumber}</p>
+                {c.needsReview && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                    <AlertTriangle className="h-3 w-3" />
+                    Cần BTC xác nhận nội dung
+                  </span>
+                )}
+              </div>
               {editingId === c.criterionId ? (
                 <Textarea
                   value={draft}

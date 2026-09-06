@@ -48,9 +48,11 @@ Admin có thể sửa (`EDIT_SCORE`, ghi đè theo `submissionId`, cập nhật 
 
 ## 6. Điểm ngày & xếp hạng (business logic tách khỏi UI)
 
-- `src/lib/scoring/dailyScore.ts` → `calculateDailyScore(scoresOfDay, adjustmentsOfDay, settings)`. Xem `BUSINESS_RULES_REVIEW.md` mục 1 về `DAILY_SCORE_COMBINE_MODE`.
-- `src/lib/ranking/rankClasses.ts` → `rankClasses(dailyScoresOfMonth, classes)`, trả về danh sách đã sắp xếp + áp dụng tie-break 3 bước + cờ `needsManualReview`. Không có logic xếp hạng nào nằm trực tiếp trong component/page.
-- Cả hai đều là pure function (input/output rõ ràng) ⇒ dễ unit test (xem `docs`/`tests`).
+- `src/lib/scoring/dailyScore.ts` → `calculateDailyScore(input)` nhận điểm buổi Sáng/Chiều (nếu có), tổng thưởng/trừ trong ngày và `combineMode`. Luôn trả về `morningCriteriaScore`, `afternoonCriteriaScore`, `sumScore`, `averageScore` (tham khảo, không phụ thuộc `combineMode`). Chỉ khi `combineMode` là `SUM` hoặc `AVERAGE` mới trả về `officialJudgeScore`/`officialDailyScore` khác `null` — khi `combineMode = "UNCONFIRMED"` (giá trị mặc định khi khởi tạo hệ thống), 2 field chính thức này luôn là `null` để đảm bảo không có công thức chưa được BTC xác nhận nào bị dùng ngầm cho xếp hạng. Xem `BUSINESS_RULES_REVIEW.md` mục 1.
+- `src/lib/ranking/rankClasses.ts` → `rankClasses(inputs)`, trả về danh sách đã sắp xếp theo `dailyScore` (chính là `officialDailyScore` mỗi ngày, do `src/lib/admin/aggregate.ts` tổng hợp) + áp dụng tie-break 3 bước tự động + cờ `needsManualReview`. Khi `combineMode = "UNCONFIRMED"`, mọi `dailyScore` đều `null` ⇒ `/admin/ranking` tự chuyển sang hiển thị bảng số liệu tham khảo (sáng/chiều/tổng/trung bình) thay vì bảng xếp hạng chính thức. Không có logic xếp hạng nào nằm trực tiếp trong component/page.
+- Quyết định thủ công khi đồng hạng (`needsManualReview`) được lưu vào sheet `RankingDecisions` (`manualRankingDecision`, `decisionReason`, `decidedByEmail/Name`, `decidedAt`) qua `saveManualRankingDecisionAction` — không tự động chọn lớp thắng.
+- Cấu hình `Settings.GRADING_SCALE_ENABLED` (mặc định `FALSE`) được dự trù cho tiêu chí phụ "mức xếp loại cao hơn" nêu trong KH nhưng **chưa có code nào đọc/dùng** vì tài liệu không định nghĩa thang xếp loại — chỉ là chỗ cấu hình dự phòng.
+- Cả `calculateDailyScore` và `rankClasses` đều là pure function (input/output rõ ràng) ⇒ dễ unit test (xem `tests/`).
 
 ## 7. Cấu trúc thư mục
 

@@ -2,10 +2,15 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, GraduationCap } from "lucide-react";
+import { CheckCircle2, GraduationCap, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDateVN } from "@/lib/timezone/timezone";
+import { formatDateVN, isTimeWithinRange } from "@/lib/timezone/timezone";
 import type { ClassConfig, Grade, Session_ } from "@/types";
+
+interface SessionWindow {
+  start: string;
+  end: string;
+}
 
 interface JudgeHomeProps {
   userName: string;
@@ -15,6 +20,12 @@ interface JudgeHomeProps {
   grades: Grade[];
   scoredKeys: string[];
   defaultSession: Session_;
+  /** Giờ hiện tại (HH:mm, giờ Việt Nam) tại thời điểm render trang — chỉ
+   * dùng để CẢNH BÁO (không chặn) khi ngoài khung giờ đề xuất. Xem
+   * BUSINESS_RULES_REVIEW.md mục 4: người chấm luôn tự xác nhận buổi, hệ
+   * thống không tự suy ra/khoá buổi chấm theo giờ nộp bài. */
+  currentTime: string;
+  sessionWindows: Record<Session_, SessionWindow>;
 }
 
 const SESSION_LABEL: Record<Session_, string> = {
@@ -29,11 +40,19 @@ export function JudgeHome({
   grades,
   scoredKeys,
   defaultSession,
+  currentTime,
+  sessionWindows,
 }: JudgeHomeProps) {
   const router = useRouter();
   const [session, setSession] = React.useState<Session_>(defaultSession);
   const [grade, setGrade] = React.useState<Grade | null>(grades[0] ?? null);
   const scoredSet = React.useMemo(() => new Set(scoredKeys), [scoredKeys]);
+
+  const window_ = sessionWindows[session];
+  const isOutsideWindow =
+    !!window_.start &&
+    !!window_.end &&
+    !isTimeWithinRange(currentTime, window_.start, window_.end);
 
   const classesOfGrade = React.useMemo(
     () => classes.filter((c) => c.grade === grade).sort((a, b) => a.sortOrder - b.sortOrder),
@@ -72,6 +91,14 @@ export function JudgeHome({
             </button>
           ))}
         </div>
+
+        {isOutsideWindow && (
+          <p className="mt-2 flex items-start gap-1.5 rounded-[var(--radius)] bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            Hiện tại ({currentTime}) nằm ngoài khung giờ đề xuất cho buổi {SESSION_LABEL[session]}
+            {" "}({window_.start}–{window_.end}). Bạn vẫn có thể tiếp tục nếu đang chấm đúng buổi này.
+          </p>
+        )}
       </header>
 
       <main className="p-4">

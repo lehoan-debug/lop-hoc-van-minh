@@ -7,8 +7,10 @@ import type { CriterionConfig } from "@/types";
  *
  * Tiêu chí 7 bị cắt cụt ngay trong văn bản gốc ("...gọn gàng, không ") —
  * đã xác minh đây là lỗi có sẵn trong tài liệu Word, không phải lỗi khi đọc
- * file. Xem chi tiết tại BUSINESS_RULES_REVIEW.md mục 2. Mô tả tiêu chí có
- * thể chỉnh sửa qua /admin/settings khi nhà trường có bản chính thức.
+ * file. Xem chi tiết tại BUSINESS_RULES_REVIEW.md mục 2 — được đánh dấu
+ * `needsReview: true` để Admin nhận biết ngay trong /admin/settings. Mô tả
+ * tiêu chí có thể chỉnh sửa qua /admin/settings khi nhà trường có bản chính
+ * thức (cờ needsReview sẽ tự động tắt khi Admin cập nhật mô tả).
  *
  * SEED DATA dùng để khởi tạo sheet `Criteria`. Sau khi khởi tạo, sheet
  * `Criteria` là nguồn dữ liệu chính thức.
@@ -21,6 +23,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
     description: "Rác được bỏ gọn vào thùng.",
     active: true,
     sortOrder: 1,
+    needsReview: false,
   },
   {
     criterionId: "C2",
@@ -31,6 +34,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Toàn bộ balo, cặp đặt gọn ở đúng khu vực quy định (hộc bàn/tủ locker) Không có balo, cặp đặt giữa lối đi.",
     active: true,
     sortOrder: 2,
+    needsReview: false,
   },
   {
     criterionId: "C3",
@@ -41,6 +45,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Không có dây điện, ổ cắm điện kéo dài chắn lối đi hoặc nằm trực tiếp giữa sàn.",
     active: true,
     sortOrder: 3,
+    needsReview: false,
   },
   {
     criterionId: "C4",
@@ -51,6 +56,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Sách vở, dụng cụ học tập được đặt gọn gàng (trên mặt bàn/trong hộc bàn), không bừa bộn.",
     active: true,
     sortOrder: 4,
+    needsReview: false,
   },
   {
     criterionId: "C5",
@@ -59,6 +65,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
     description: "Không có đồ dùng cá nhân đặt ở sàn nhà, bệ cửa sổ",
     active: true,
     sortOrder: 5,
+    needsReview: false,
   },
   {
     criterionId: "C6",
@@ -67,6 +74,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
     description: "Bàn giáo viên được sắp xếp gọn gàng, sạch sẽ",
     active: true,
     sortOrder: 6,
+    needsReview: false,
   },
   {
     criterionId: "C7",
@@ -78,6 +86,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Kiểm tra ngẫu nhiên tủ locker, học sinh sắp xếp đồ dùng gọn gàng, không",
     active: true,
     sortOrder: 7,
+    needsReview: true,
   },
   {
     criterionId: "C8",
@@ -87,6 +96,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Đảm bảo 100% học sinh mang đồng phục đúng quy định. + HS Nam: Áo cam, quần be. Áo bỏ vào quần. Giày/Dép có quai sau. Không có tóc sáng màu. + HS nữ: Áo cam, quần/váy be. Áo bỏ vào quần/váy. Chiều dài váy chạm đầu gối. Giày/dép có quai sau. Không có tóc sáng màu.",
     active: true,
     sortOrder: 8,
+    needsReview: false,
   },
   {
     criterionId: "C9",
@@ -97,6 +107,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Học sinh về sinh hoạt buổi trưa (Nội trú/Bán trú) đúng giờ quy định",
     active: true,
     sortOrder: 9,
+    needsReview: false,
   },
   {
     criterionId: "C10",
@@ -106,6 +117,7 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Xếp ghế gọn gàng trên bàn cuối mỗi buổi học (Sáng và chiều)",
     active: true,
     sortOrder: 10,
+    needsReview: false,
   },
   {
     criterionId: "C11",
@@ -116,5 +128,6 @@ export const SEED_CRITERIA: CriterionConfig[] = [
       "Đầu giờ học buổi chiều, lớp ổn định nề nếp, tác phong, vệ sinh lớp học (theo các tiêu chí từ 1-8) trước khi vào tiết học.",
     active: true,
     sortOrder: 11,
+    needsReview: false,
   },
 ];

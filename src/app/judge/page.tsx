@@ -25,7 +25,8 @@ export default async function JudgePage() {
   const todayScores = await getScores({ dateFrom: date, dateTo: date, judgeEmail: user.email });
   const scoredKeys = todayScores.map((s) => `${s.classId}__${s.session}`);
 
-  const defaultSession: Session_ = currentTimeVN() < "12:00" ? "MORNING" : "AFTERNOON";
+  const currentTime = currentTimeVN();
+  const defaultSession: Session_ = currentTime < "12:00" ? "MORNING" : "AFTERNOON";
 
   return (
     <JudgeHome
@@ -36,6 +37,11 @@ export default async function JudgePage() {
       grades={visibleGrades}
       scoredKeys={scoredKeys}
       defaultSession={defaultSession}
+      currentTime={currentTime}
+      sessionWindows={{
+        MORNING: { start: settings.MORNING_SESSION_START, end: settings.MORNING_SESSION_END },
+        AFTERNOON: { start: settings.AFTERNOON_SESSION_START, end: settings.AFTERNOON_SESSION_END },
+      }}
     />
   );
 }
