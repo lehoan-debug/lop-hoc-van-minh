@@ -580,11 +580,11 @@ function ImportExcelTab({ roundId, onChanged }: { roundId: string; onChanged: ()
       </p>
 
       <a
-        href="/api/admin/scoring-rounds/import-template"
+        href={`/api/admin/scoring-rounds/${roundId}/import-template`}
         className="mb-3 inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
       >
         <Download className="h-3.5 w-3.5" />
-        Tải file mẫu
+        Tải file mẫu (đã điền sẵn danh sách lớp &amp; người chấm của đợt này)
       </a>
 
       <div className="flex flex-wrap items-center gap-2">
