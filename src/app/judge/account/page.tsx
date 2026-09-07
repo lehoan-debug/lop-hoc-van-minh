@@ -3,9 +3,11 @@ import { SignOutButton } from "@/components/layout/SignOutButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { User } from "lucide-react";
+import type { UserRole } from "@/types";
 
-const ROLE_LABEL: Record<string, string> = {
+const ROLE_LABEL: Record<UserRole, string> = {
   JUDGE: "Giám khảo",
+  HOMEROOM_TEACHER: "GVCN",
   ADMIN: "Quản trị viên",
   SUPER_ADMIN: "Quản trị viên cấp cao",
 };
@@ -29,14 +31,18 @@ export default async function JudgeAccountPage() {
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Vai trò</span>
-            <Badge>{ROLE_LABEL[user.role] ?? user.role}</Badge>
+            <div className="flex flex-wrap justify-end gap-1">
+              {user.roles.map((r) => (
+                <Badge key={r}>{ROLE_LABEL[r]}</Badge>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Khối được phân công</span>
-            <span className="font-medium">
-              {user.allowedGrades === "ALL" ? "Tất cả" : user.allowedGrades.join(", ")}
-            </span>
-          </div>
+          {user.homeroomClassIds.length > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Lớp chủ nhiệm</span>
+              <span className="font-medium">{user.homeroomClassIds.join(", ")}</span>
+            </div>
+          )}
           <SignOutButton className="mt-2 w-full" />
         </CardContent>
       </Card>

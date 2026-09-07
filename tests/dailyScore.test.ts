@@ -100,6 +100,34 @@ describe("calculateDailyScore", () => {
     expect(result.officialDailyScore).toBe(19);
   });
 
+  it("V2: điểm tối đa mỗi buổi động theo tổng maxScore tiêu chí thực tế, không hard-code 11", () => {
+    const result = calculateDailyScore({
+      morningCriteriaScore: 10,
+      morningMaxScore: 13, // vd. Admin đã thêm tiêu chí mới, tổng max đổi thành 13
+      afternoonCriteriaScore: 9,
+      afternoonMaxScore: 13,
+      bonusTotal: 0,
+      penaltyTotal: 0,
+      combineMode: "SUM",
+    });
+    expect(result.officialJudgeScore).toBe(19);
+    expect(result.maxPossibleOfficialScore).toBe(26);
+  });
+
+  it("V2 + AVERAGE: điểm tối đa = trung bình max mỗi buổi", () => {
+    const result = calculateDailyScore({
+      morningCriteriaScore: 10,
+      morningMaxScore: 12,
+      afternoonCriteriaScore: 9,
+      afternoonMaxScore: 14,
+      bonusTotal: 0,
+      penaltyTotal: 0,
+      combineMode: "AVERAGE",
+    });
+    expect(result.officialJudgeScore).toBe(9.5);
+    expect(result.maxPossibleOfficialScore).toBe(13);
+  });
+
   it("đạt điểm tối đa khi officialJudgeScore === maxPossibleOfficialScore", () => {
     const result = calculateDailyScore({
       morningCriteriaScore: 11,

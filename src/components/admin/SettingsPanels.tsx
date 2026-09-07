@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Loader2, Save, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Save, SlidersHorizontal, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -17,38 +17,37 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
-import {
-  updateSettingAction,
-  toggleClassActiveAction,
-  toggleCriterionActiveAction,
-  updateCriterionDescriptionAction,
-} from "@/lib/actions/adminActions";
-import type { AppSettings, ClassConfig, CriterionConfig, Grade } from "@/types";
+import { updateSettingAction, toggleClassActiveAction } from "@/lib/actions/adminActions";
+import type { AppSettings, ClassConfig, Grade } from "@/types";
 
 export function SettingsPanels({
   settings,
   classes,
-  criteria,
 }: {
   settings: AppSettings;
   classes: ClassConfig[];
-  criteria: CriterionConfig[];
 }) {
   return (
     <Tabs defaultValue="general">
       <TabsList>
         <TabsTrigger value="general">Chung</TabsTrigger>
         <TabsTrigger value="classes">Lớp</TabsTrigger>
-        <TabsTrigger value="criteria">Tiêu chí</TabsTrigger>
       </TabsList>
       <TabsContent value="general">
+        <Link
+          href="/admin/criteria"
+          className="mb-4 flex items-center justify-between rounded-[var(--radius)] border border-primary/30 bg-primary/5 p-3 text-sm text-primary"
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            Quản lý tiêu chí chấm điểm (thêm/sửa/điểm/archive) đã chuyển sang trang riêng
+          </span>
+          <ChevronRight className="h-4 w-4" />
+        </Link>
         <GeneralSettingsForm settings={settings} />
       </TabsContent>
       <TabsContent value="classes">
         <ClassesTogglePanel classes={classes} />
-      </TabsContent>
-      <TabsContent value="criteria">
-        <CriteriaTogglePanel criteria={criteria} />
       </TabsContent>
     </Tabs>
   );
@@ -243,79 +242,3 @@ function ClassesTogglePanel({ classes }: { classes: ClassConfig[] }) {
   );
 }
 
-function CriteriaTogglePanel({ criteria }: { criteria: CriterionConfig[] }) {
-  const { toast } = useToast();
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [draft, setDraft] = React.useState("");
-  const [isPending, startTransition] = useTransition();
-
-  const startEdit = (c: CriterionConfig) => {
-    setEditingId(c.criterionId);
-    setDraft(c.description);
-  };
-
-  const saveDescription = (criterionId: string) => {
-    startTransition(async () => {
-      const result = await updateCriterionDescriptionAction(criterionId, draft);
-      if (result.ok) {
-        toast({ variant: "success", title: "Đã cập nhật mô tả tiêu chí." });
-        setEditingId(null);
-      } else {
-        toast({ variant: "error", title: result.error });
-      }
-    });
-  };
-
-  return (
-    <div className="space-y-2">
-      {criteria.map((c) => (
-        <div key={c.criterionId} className="rounded-[var(--radius)] border border-border bg-card p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold">Tiêu chí {c.criterionNumber}</p>
-                {c.needsReview && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-                    <AlertTriangle className="h-3 w-3" />
-                    Cần BTC xác nhận nội dung
-                  </span>
-                )}
-              </div>
-              {editingId === c.criterionId ? (
-                <Textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  className="mt-1"
-                  rows={3}
-                />
-              ) : (
-                <p className="mt-1 text-sm text-muted-foreground">{c.description}</p>
-              )}
-            </div>
-            <Switch
-              checked={c.active}
-              onCheckedChange={(v) => toggleCriterionActiveAction(c.criterionId, v)}
-            />
-          </div>
-          <div className="mt-2">
-            {editingId === c.criterionId ? (
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => saveDescription(c.criterionId)} disabled={isPending}>
-                  {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Lưu
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
-                  Huỷ
-                </Button>
-              </div>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => startEdit(c)}>
-                Sửa mô tả
-              </Button>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}

@@ -2,6 +2,12 @@
  * Định nghĩa tên sheet & thứ tự cột — dùng chung bởi lib/google/sheets.ts
  * (đọc/ghi runtime) và scripts/init-google-sheet.ts (khởi tạo header/seed).
  * Đây KHÔNG chứa secret, an toàn import ở cả server lẫn script Node thường.
+ *
+ * NGUYÊN TẮC V2: chỉ được THÊM cột vào CUỐI mảng header của sheet đã tồn
+ * tại — không xoá, không đổi tên, không đổi thứ tự cột cũ. `sheetRepo.ts`
+ * đọc theo tên cột (object), không theo vị trí, nên dữ liệu dòng cũ thiếu
+ * cột mới sẽ tự nhận "" khi đọc — không cần backfill bắt buộc.
+ * Xem docs/V2_UPGRADE_ANALYSIS.md.
  */
 
 export const SHEET_NAMES = {
@@ -13,6 +19,8 @@ export const SHEET_NAMES = {
   SETTINGS: "Settings",
   AUDIT_LOG: "AuditLog",
   RANKING_DECISIONS: "RankingDecisions",
+  SCORING_ROUNDS: "ScoringRounds",
+  SCORING_ROUND_ASSIGNMENTS: "ScoringRoundAssignments",
 } as const;
 
 export type SheetName = (typeof SHEET_NAMES)[keyof typeof SHEET_NAMES];
@@ -26,6 +34,9 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "allowedGrades",
     "createdAt",
     "updatedAt",
+    // V2 — thêm cuối, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.1
+    "rolesJson",
+    "homeroomClassIdsJson",
   ],
   [SHEET_NAMES.CLASSES]: ["classId", "className", "grade", "active", "sortOrder"],
   [SHEET_NAMES.CRITERIA]: [
@@ -36,6 +47,12 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "active",
     "sortOrder",
     "needsReview",
+    // V2 — thêm cuối, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.2
+    "maxScore",
+    "scoringType",
+    "gradeIdsJson",
+    "createdAt",
+    "updatedAt",
   ],
   [SHEET_NAMES.SCORES]: [
     "submissionId",
@@ -63,6 +80,12 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "deletedAt",
     "createdAt",
     "updatedAt",
+    // V2 — thêm cuối, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.3
+    "roundId",
+    "criteriaSnapshotJson",
+    "answersJson",
+    "totalScore",
+    "maxPossibleScore",
   ],
   [SHEET_NAMES.ADJUSTMENTS]: [
     "adjustmentId",
@@ -104,6 +127,35 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "decidedByEmail",
     "decidedByName",
     "decidedAt",
+  ],
+  // V2 — sheet mới, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.4
+  [SHEET_NAMES.SCORING_ROUNDS]: [
+    "roundId",
+    "title",
+    "description",
+    "session",
+    "startsAt",
+    "endsAt",
+    "status",
+    "gradeIdsJson",
+    "classIdsJson",
+    "activeCriteriaSetId",
+    "createdBy",
+    "createdAt",
+    "updatedAt",
+    "manuallyLockedAt",
+    "manuallyLockedBy",
+  ],
+  // V2 — sheet mới, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.5
+  [SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS]: [
+    "assignmentId",
+    "roundId",
+    "userEmail",
+    "allowedGradeIdsJson",
+    "allowedClassIdsJson",
+    "active",
+    "assignedBy",
+    "assignedAt",
   ],
 };
 

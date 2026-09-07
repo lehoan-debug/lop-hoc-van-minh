@@ -8,6 +8,7 @@ import {
 } from "./sheetRepo";
 import { SHEET_NAMES, DEFAULT_SETTINGS } from "./schema";
 import { nowIso } from "@/lib/timezone/timezone";
+import { primaryRole } from "@/lib/auth/permissions";
 import type {
   AppUser,
   AppSettings,
@@ -23,6 +24,12 @@ import type {
   AdjustmentType,
   RankingDecisionRecord,
   DailyScoreCombineModeSetting,
+  UserRole,
+  ScoringType,
+  CriterionSnapshotItem,
+  ScoringRound,
+  ScoringRoundAssignment,
+  RoundStoredStatus,
 } from "@/types";
 import { CRITERION_KEYS } from "@/types";
 
@@ -49,15 +56,49 @@ function parseBinary(v: string | undefined): 0 | 1 {
   return v === "1" ? 1 : 0;
 }
 
+const ALL_USER_ROLES: UserRole[] = [
+  "JUDGE",
+  "HOMEROOM_TEACHER",
+  "ADMIN",
+  "SUPER_ADMIN",
+];
+
+function isUserRole(v: unknown): v is UserRole {
+  return typeof v === "string" && (ALL_USER_ROLES as string[]).includes(v);
+}
+
+function parseJsonArray<T>(v: string | undefined, guard: (x: unknown) => x is T): T[] {
+  if (!v) return [];
+  try {
+    const parsed = JSON.parse(v);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(guard);
+  } catch {
+    return [];
+  }
+}
+
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
 // ---------- Users ----------
 
 function rowToUser(row: SheetRow): AppUser {
+  const legacyRole = (row.role as UserRole) || "JUDGE";
+  const rolesFromJson = parseJsonArray(row.rolesJson, isUserRole);
+  // Chưa có rolesJson (dữ liệu V1 cũ) -> fallback role đơn, đúng mục A của
+  // yêu cầu V2 (role=ADMIN -> roles=["ADMIN"]). Không tin cột role cũ nếu
+  // rolesJson đã có dữ liệu (rolesJson là nguồn sự thật).
+  const roles = rolesFromJson.length > 0 ? rolesFromJson : [legacyRole];
   return {
     email: row.email?.trim().toLowerCase() ?? "",
     name: row.name ?? "",
-    role: (row.role as AppUser["role"]) || "JUDGE",
+    roles,
+    role: primaryRole(roles),
     active: parseBool(row.active),
     allowedGrades: parseAllowedGrades(row.allowedGrades),
+    homeroomClassIds: parseJsonArray(row.homeroomClassIdsJson, isString),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
   };
@@ -77,31 +118,32 @@ export async function getUserByEmail(email: string): Promise<AppUser | null> {
 export async function updateUser(input: {
   email: string;
   name: string;
-  role: AppUser["role"];
+  roles: UserRole[];
   active: boolean;
   allowedGrades: Grade[] | "ALL";
+  homeroomClassIds: string[];
 }): Promise<boolean> {
   const normalized = input.email.trim().toLowerCase();
+  const roles = input.roles.length > 0 ? input.roles : ["JUDGE" as UserRole];
+  const patch: SheetRow = {
+    name: input.name,
+    role: primaryRole(roles),
+    rolesJson: JSON.stringify(roles),
+    active: input.active ? "TRUE" : "FALSE",
+    allowedGrades: serializeAllowedGrades(input.allowedGrades),
+    homeroomClassIdsJson: JSON.stringify(input.homeroomClassIds),
+    updatedAt: nowIso(),
+  };
   const ok = await updateRowWhere(
     SHEET_NAMES.USERS,
     (row) => row.email?.trim().toLowerCase() === normalized,
-    {
-      name: input.name,
-      role: input.role,
-      active: input.active ? "TRUE" : "FALSE",
-      allowedGrades: serializeAllowedGrades(input.allowedGrades),
-      updatedAt: nowIso(),
-    },
+    patch,
   );
   if (!ok) {
     await appendRow(SHEET_NAMES.USERS, {
       email: normalized,
-      name: input.name,
-      role: input.role,
-      active: input.active ? "TRUE" : "FALSE",
-      allowedGrades: serializeAllowedGrades(input.allowedGrades),
+      ...patch,
       createdAt: nowIso(),
-      updatedAt: nowIso(),
     });
   }
   return true;
@@ -143,7 +185,16 @@ export async function updateClassActive(
 
 // ---------- Criteria ----------
 
+function isGrade(v: unknown): v is Grade {
+  return v === "10" || v === "11" || v === "12";
+}
+
 function rowToCriterion(row: SheetRow): CriterionConfig {
+  // maxScore/scoringType là cột V2 — dòng Criteria V1 cũ không có, fallback
+  // đúng hành vi V1 (mỗi tiêu chí Đạt = 1 điểm, PASS_FAIL). Xem
+  // docs/V2_UPGRADE_ANALYSIS.md mục 3.2.
+  const maxScoreRaw = row.maxScore?.trim();
+  const maxScore = maxScoreRaw ? Number(maxScoreRaw) : 1;
   return {
     criterionId: row.criterionId ?? "",
     criterionNumber: Number(row.criterionNumber) || 0,
@@ -152,6 +203,11 @@ function rowToCriterion(row: SheetRow): CriterionConfig {
     active: parseBool(row.active),
     sortOrder: Number(row.sortOrder) || 0,
     needsReview: parseBool(row.needsReview),
+    maxScore: Number.isFinite(maxScore) && maxScore > 0 ? maxScore : 1,
+    scoringType: (row.scoringType as ScoringType) || "PASS_FAIL",
+    gradeIds: parseJsonArray(row.gradeIdsJson, isGrade),
+    createdAt: row.createdAt ?? "",
+    updatedAt: row.updatedAt ?? "",
   };
 }
 
@@ -164,16 +220,91 @@ export async function getCriteria(opts?: { activeOnly?: boolean }): Promise<
   return criteria.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+/** Tiêu chí áp dụng cho 1 khối: `gradeIds` rỗng = áp dụng mọi khối (đúng
+ * hành vi V1). */
+export function criterionAppliesToGrade(
+  criterion: CriterionConfig,
+  grade: Grade,
+): boolean {
+  return criterion.gradeIds.length === 0 || criterion.gradeIds.includes(grade);
+}
+
+export interface CreateCriterionInput {
+  criterionName: string;
+  description: string;
+  maxScore: number;
+  gradeIds: Grade[];
+  sortOrder: number;
+}
+
+export async function createCriterion(
+  input: CreateCriterionInput,
+): Promise<CriterionConfig> {
+  const now = nowIso();
+  const criteria = await getAllRows(SHEET_NAMES.CRITERIA, { cache: false });
+  // criterionId mới không trùng — dùng số thứ tự tiếp theo dựa trên số dòng
+  // hiện có (đơn giản, đủ dùng cho quy mô 1 trường; không cần UUID để giữ ID
+  // ngắn gọn, dễ đọc trong Sheet).
+  const nextNumber = criteria.length + 1;
+  const record: CriterionConfig = {
+    criterionId: `C${nextNumber}-${randomUUID().slice(0, 8)}`,
+    criterionNumber: nextNumber,
+    criterionName: input.criterionName,
+    description: input.description,
+    active: true,
+    sortOrder: input.sortOrder,
+    needsReview: false,
+    maxScore: input.maxScore,
+    scoringType: "PASS_FAIL",
+    gradeIds: input.gradeIds,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await appendRow(SHEET_NAMES.CRITERIA, {
+    criterionId: record.criterionId,
+    criterionNumber: String(record.criterionNumber),
+    criterionName: record.criterionName,
+    description: record.description,
+    active: "TRUE",
+    sortOrder: String(record.sortOrder),
+    needsReview: "FALSE",
+    maxScore: String(record.maxScore),
+    scoringType: record.scoringType,
+    gradeIdsJson: JSON.stringify(record.gradeIds),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return record;
+}
+
 export async function updateCriterion(
   criterionId: string,
-  updates: { active?: boolean; description?: string; needsReview?: boolean },
+  updates: {
+    criterionName?: string;
+    description?: string;
+    active?: boolean;
+    needsReview?: boolean;
+    maxScore?: number;
+    gradeIds?: Grade[];
+    sortOrder?: number;
+  },
 ): Promise<boolean> {
-  const patch: SheetRow = {};
+  const patch: SheetRow = { updatedAt: nowIso() };
+  if (updates.criterionName !== undefined) patch.criterionName = updates.criterionName;
   if (updates.active !== undefined) patch.active = updates.active ? "TRUE" : "FALSE";
   if (updates.description !== undefined) patch.description = updates.description;
   if (updates.needsReview !== undefined)
     patch.needsReview = updates.needsReview ? "TRUE" : "FALSE";
+  if (updates.maxScore !== undefined) patch.maxScore = String(updates.maxScore);
+  if (updates.gradeIds !== undefined) patch.gradeIdsJson = JSON.stringify(updates.gradeIds);
+  if (updates.sortOrder !== undefined) patch.sortOrder = String(updates.sortOrder);
   return updateRowWhere(SHEET_NAMES.CRITERIA, (row) => row.criterionId === criterionId, patch);
+}
+
+/** "Xoá" tiêu chí = archive (active=false) — KHÔNG xoá dòng thật, giữ lịch
+ * sử chấm điểm đã dùng tiêu chí này nguyên vẹn (snapshot đã lưu độc lập). */
+export async function archiveCriterion(criterionId: string): Promise<boolean> {
+  return updateCriterion(criterionId, { active: false });
 }
 
 // ---------- Settings ----------
@@ -246,6 +377,12 @@ function rowToScore(row: SheetRow): ScoreRecord {
     deletedAt: row.deletedAt ?? "",
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
+    // V2 — rỗng/null ở bản ghi V1 legacy. Xem docs/V2_UPGRADE_ANALYSIS.md mục 3.3.
+    roundId: row.roundId ?? "",
+    criteriaSnapshotJson: row.criteriaSnapshotJson ?? "[]",
+    answersJson: row.answersJson ?? "{}",
+    totalScore: row.totalScore ? Number(row.totalScore) : null,
+    maxPossibleScore: row.maxPossibleScore ? Number(row.maxPossibleScore) : null,
   };
 }
 
@@ -256,6 +393,7 @@ export interface ScoreFilter {
   grade?: Grade;
   classId?: string;
   judgeEmail?: string;
+  roundId?: string;
   includeDeleted?: boolean;
 }
 
@@ -272,6 +410,7 @@ export async function getScores(filter: ScoreFilter = {}): Promise<
   if (filter.classId) scores = scores.filter((s) => s.classId === filter.classId);
   if (filter.judgeEmail)
     scores = scores.filter((s) => s.judgeEmail === filter.judgeEmail);
+  if (filter.roundId) scores = scores.filter((s) => s.roundId === filter.roundId);
   return scores;
 }
 
@@ -280,6 +419,9 @@ export async function getScore(submissionId: string): Promise<ScoreRecord | null
   return scores.find((s) => s.submissionId === submissionId) ?? null;
 }
 
+/** Legacy V1 — khoá trùng theo (date, session, classId, judgeEmail). Giữ
+ * nguyên, không đổi hành vi. Luồng V2 (theo Đợt chấm) dùng
+ * `checkDuplicateRoundScore()` bên dưới. */
 export async function checkDuplicateScore(params: {
   date: string;
   session: Session_;
@@ -297,6 +439,22 @@ export async function checkDuplicateScore(params: {
     scores.find((s) => s.judgeEmail.trim().toLowerCase() === normalizedEmail) ??
     null
   );
+}
+
+/**
+ * V2 — khoá trùng theo `(roundId, classId)`: mặc định MỖI LỚP CHỈ CÓ MỘT KẾT
+ * QUẢ CHÍNH THỨC trong một Đợt chấm, bất kể ai chấm (xem
+ * BUSINESS_RULES_REVIEW.md / docs/V2_UPGRADE_ANALYSIS.md mục 2 bảng thay
+ * đổi). Nếu lớp đã có kết quả, trả về bản ghi đó để hiển thị "đã chấm lúc...
+ * bởi...", không cho phép người khác ghi đè ngầm — Admin muốn sửa phải qua
+ * `editScore()` (có AuditLog).
+ */
+export async function checkDuplicateRoundScore(params: {
+  roundId: string;
+  classId: string;
+}): Promise<ScoreRecord | null> {
+  const scores = await getScores({ roundId: params.roundId, classId: params.classId });
+  return scores[0] ?? null;
 }
 
 export interface CreateScoreInput {
@@ -333,6 +491,11 @@ export async function createScore(input: CreateScoreInput): Promise<ScoreRecord>
     deletedAt: "",
     createdAt: timestamp,
     updatedAt: timestamp,
+    roundId: "",
+    criteriaSnapshotJson: "[]",
+    answersJson: "{}",
+    totalScore: null,
+    maxPossibleScore: null,
   };
 
   const row: SheetRow = {
@@ -361,6 +524,111 @@ export async function createScore(input: CreateScoreInput): Promise<ScoreRecord>
     deletedAt: "",
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+  };
+
+  await appendRow(SHEET_NAMES.SCORES, row);
+  return record;
+}
+
+// ---------- Scores V2 (theo Đợt chấm — ScoringRound) ----------
+
+export interface CreateRoundScoreInput {
+  roundId: string;
+  date: string;
+  session: Session_;
+  grade: Grade;
+  classId: string;
+  className: string;
+  judgeEmail: string;
+  judgeName: string;
+  /** Bản chụp tiêu chí TẠI THỜI ĐIỂM chấm — không tính lại theo Criteria
+   * hiện tại khi Criteria đổi sau này. Xem docs/V2_UPGRADE_ANALYSIS.md mục 3.3. */
+  criteriaSnapshot: CriterionSnapshotItem[];
+}
+
+/** Ghi kết quả chấm V2 (gắn với 1 Đợt chấm cụ thể). Không đụng tới
+ * c1..c11/totalCriteriaScore (để trống) — mọi nơi đọc điểm phải dùng
+ * `getEffectiveScore()` (src/lib/scoring/effectiveScore.ts) để tương thích
+ * cả bản ghi V1 lẫn V2. */
+export async function createRoundScore(
+  input: CreateRoundScoreInput,
+): Promise<ScoreRecord> {
+  const totalScore = input.criteriaSnapshot.reduce(
+    (sum, item) => sum + item.awardedScore,
+    0,
+  );
+  const maxPossibleScore = input.criteriaSnapshot.reduce(
+    (sum, item) => sum + item.maxScore,
+    0,
+  );
+  const answers: Record<string, "PASS" | "FAIL"> = {};
+  for (const item of input.criteriaSnapshot) answers[item.criterionId] = item.result;
+
+  const timestamp = nowIso();
+  const record: ScoreRecord = {
+    submissionId: randomUUID(),
+    timestamp,
+    date: input.date,
+    session: input.session,
+    grade: input.grade,
+    classId: input.classId,
+    className: input.className,
+    judgeEmail: input.judgeEmail.trim().toLowerCase(),
+    judgeName: input.judgeName,
+    c1: 0,
+    c2: 0,
+    c3: 0,
+    c4: 0,
+    c5: 0,
+    c6: 0,
+    c7: 0,
+    c8: 0,
+    c9: 0,
+    c10: 0,
+    c11: 0,
+    totalCriteriaScore: 0,
+    notesJson: "[]",
+    deletedAt: "",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    roundId: input.roundId,
+    criteriaSnapshotJson: JSON.stringify(input.criteriaSnapshot),
+    answersJson: JSON.stringify(answers),
+    totalScore,
+    maxPossibleScore,
+  };
+
+  const row: SheetRow = {
+    submissionId: record.submissionId,
+    timestamp: record.timestamp,
+    date: record.date,
+    session: record.session,
+    grade: record.grade,
+    classId: record.classId,
+    className: record.className,
+    judgeEmail: record.judgeEmail,
+    judgeName: record.judgeName,
+    c1: "",
+    c2: "",
+    c3: "",
+    c4: "",
+    c5: "",
+    c6: "",
+    c7: "",
+    c8: "",
+    c9: "",
+    c10: "",
+    c11: "",
+    totalCriteriaScore: "",
+    notesJson: record.notesJson,
+    deletedAt: "",
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    roundId: record.roundId,
+    criteriaSnapshotJson: record.criteriaSnapshotJson,
+    answersJson: record.answersJson,
+    totalScore: String(totalScore),
+    maxPossibleScore: String(maxPossibleScore),
   };
 
   await appendRow(SHEET_NAMES.SCORES, row);
@@ -645,4 +913,263 @@ export async function upsertRankingDecision(
     ...row,
   });
   return record;
+}
+
+// ---------- ScoringRounds (V2 — Đợt chấm) ----------
+
+function rowToScoringRound(row: SheetRow): ScoringRound {
+  return {
+    roundId: row.roundId ?? "",
+    title: row.title ?? "",
+    description: row.description ?? "",
+    session: (row.session as Session_) ?? "MORNING",
+    startsAt: row.startsAt ?? "",
+    endsAt: row.endsAt ?? "",
+    status: (row.status as RoundStoredStatus) || "DRAFT",
+    gradeIds: parseJsonArray(row.gradeIdsJson, isGrade),
+    classIds: parseJsonArray(row.classIdsJson, isString),
+    createdBy: row.createdBy ?? "",
+    createdAt: row.createdAt ?? "",
+    updatedAt: row.updatedAt ?? "",
+    manuallyLockedAt: row.manuallyLockedAt ?? "",
+    manuallyLockedBy: row.manuallyLockedBy ?? "",
+  };
+}
+
+export async function getScoringRounds(): Promise<ScoringRound[]> {
+  const rows = await getAllRows(SHEET_NAMES.SCORING_ROUNDS, { cache: false });
+  return rows
+    .map(rowToScoringRound)
+    .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+}
+
+export async function getScoringRound(roundId: string): Promise<ScoringRound | null> {
+  const rounds = await getScoringRounds();
+  return rounds.find((r) => r.roundId === roundId) ?? null;
+}
+
+export interface CreateScoringRoundInput {
+  title: string;
+  description?: string;
+  session: Session_;
+  startsAt: string;
+  endsAt: string;
+  gradeIds: Grade[];
+  classIds: string[];
+  createdBy: string;
+}
+
+export async function createScoringRound(
+  input: CreateScoringRoundInput,
+): Promise<ScoringRound> {
+  const now = nowIso();
+  const record: ScoringRound = {
+    roundId: randomUUID(),
+    title: input.title,
+    description: input.description ?? "",
+    session: input.session,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    status: "OPEN",
+    gradeIds: input.gradeIds,
+    classIds: input.classIds,
+    createdBy: input.createdBy.trim().toLowerCase(),
+    createdAt: now,
+    updatedAt: now,
+    manuallyLockedAt: "",
+    manuallyLockedBy: "",
+  };
+  await appendRow(SHEET_NAMES.SCORING_ROUNDS, {
+    roundId: record.roundId,
+    title: record.title,
+    description: record.description,
+    session: record.session,
+    startsAt: record.startsAt,
+    endsAt: record.endsAt,
+    status: record.status,
+    gradeIdsJson: JSON.stringify(record.gradeIds),
+    classIdsJson: JSON.stringify(record.classIds),
+    activeCriteriaSetId: "",
+    createdBy: record.createdBy,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    manuallyLockedAt: "",
+    manuallyLockedBy: "",
+  });
+  return record;
+}
+
+export async function updateScoringRound(
+  roundId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    session?: Session_;
+    startsAt?: string;
+    endsAt?: string;
+    gradeIds?: Grade[];
+    classIds?: string[];
+    status?: RoundStoredStatus;
+  },
+): Promise<boolean> {
+  const patch: SheetRow = { updatedAt: nowIso() };
+  if (updates.title !== undefined) patch.title = updates.title;
+  if (updates.description !== undefined) patch.description = updates.description;
+  if (updates.session !== undefined) patch.session = updates.session;
+  if (updates.startsAt !== undefined) patch.startsAt = updates.startsAt;
+  if (updates.endsAt !== undefined) patch.endsAt = updates.endsAt;
+  if (updates.gradeIds !== undefined) patch.gradeIdsJson = JSON.stringify(updates.gradeIds);
+  if (updates.classIds !== undefined) patch.classIdsJson = JSON.stringify(updates.classIds);
+  if (updates.status !== undefined) patch.status = updates.status;
+  return updateRowWhere(SHEET_NAMES.SCORING_ROUNDS, (row) => row.roundId === roundId, patch);
+}
+
+/** Khoá đợt chấm ngay lập tức, bất kể `endsAt`. */
+export async function lockScoringRound(
+  roundId: string,
+  lockedByEmail: string,
+): Promise<boolean> {
+  return updateRowWhere(SHEET_NAMES.SCORING_ROUNDS, (row) => row.roundId === roundId, {
+    status: "LOCKED" satisfies RoundStoredStatus,
+    manuallyLockedAt: nowIso(),
+    manuallyLockedBy: lockedByEmail.trim().toLowerCase(),
+    updatedAt: nowIso(),
+  });
+}
+
+/** Mở lại đợt đã khoá thủ công. Không phục hồi được đợt đã khoá do hết giờ
+ * (`endsAt`) trừ khi Admin cũng dời `endsAt` — tránh mở lại "ngầm" một đợt
+ * đã kết thúc theo lịch mà không ai để ý. */
+export async function reopenScoringRound(roundId: string): Promise<boolean> {
+  return updateRowWhere(SHEET_NAMES.SCORING_ROUNDS, (row) => row.roundId === roundId, {
+    status: "OPEN" satisfies RoundStoredStatus,
+    manuallyLockedAt: "",
+    manuallyLockedBy: "",
+    updatedAt: nowIso(),
+  });
+}
+
+export async function cancelScoringRound(roundId: string): Promise<boolean> {
+  return updateRowWhere(SHEET_NAMES.SCORING_ROUNDS, (row) => row.roundId === roundId, {
+    status: "CANCELLED" satisfies RoundStoredStatus,
+    updatedAt: nowIso(),
+  });
+}
+
+// ---------- ScoringRoundAssignments (V2) ----------
+
+function rowToAssignment(row: SheetRow): ScoringRoundAssignment {
+  return {
+    assignmentId: row.assignmentId ?? "",
+    roundId: row.roundId ?? "",
+    userEmail: row.userEmail?.trim().toLowerCase() ?? "",
+    allowedGradeIds: parseJsonArray(row.allowedGradeIdsJson, isGrade),
+    allowedClassIds: parseJsonArray(row.allowedClassIdsJson, isString),
+    active: parseBool(row.active),
+    assignedBy: row.assignedBy ?? "",
+    assignedAt: row.assignedAt ?? "",
+  };
+}
+
+export async function getRoundAssignments(
+  roundId: string,
+): Promise<ScoringRoundAssignment[]> {
+  const rows = await getAllRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, {
+    cache: false,
+  });
+  return rows.map(rowToAssignment).filter((a) => a.roundId === roundId && a.active);
+}
+
+/** Tất cả đợt (còn hiệu lực phân công) mà 1 user được giao — dùng cho trang
+ * chủ Giám khảo/Admin-chấm-điểm để liệt kê "Đợt chấm đang được phân công". */
+export async function getRoundAssignmentsForUser(
+  userEmail: string,
+): Promise<ScoringRoundAssignment[]> {
+  const normalized = userEmail.trim().toLowerCase();
+  const rows = await getAllRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, {
+    cache: false,
+  });
+  return rows
+    .map(rowToAssignment)
+    .filter((a) => a.userEmail === normalized && a.active);
+}
+
+export async function isUserAssignedToRound(
+  roundId: string,
+  userEmail: string,
+): Promise<ScoringRoundAssignment | null> {
+  const normalized = userEmail.trim().toLowerCase();
+  const assignments = await getRoundAssignments(roundId);
+  return assignments.find((a) => a.userEmail === normalized) ?? null;
+}
+
+export interface AssignJudgeInput {
+  roundId: string;
+  userEmail: string;
+  allowedGradeIds?: Grade[];
+  allowedClassIds?: string[];
+  assignedBy: string;
+}
+
+export async function assignJudgeToRound(
+  input: AssignJudgeInput,
+): Promise<ScoringRoundAssignment> {
+  const normalized = input.userEmail.trim().toLowerCase();
+  const now = nowIso();
+
+  // Idempotent: nếu đã có assignment (kể cả đã inactive) cho đúng cặp
+  // (roundId, userEmail), kích hoạt lại thay vì tạo dòng trùng.
+  const reactivated = await updateRowWhere(
+    SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS,
+    (row) =>
+      row.roundId === input.roundId &&
+      row.userEmail?.trim().toLowerCase() === normalized,
+    {
+      active: "TRUE",
+      allowedGradeIdsJson: JSON.stringify(input.allowedGradeIds ?? []),
+      allowedClassIdsJson: JSON.stringify(input.allowedClassIds ?? []),
+      assignedBy: input.assignedBy.trim().toLowerCase(),
+      assignedAt: now,
+    },
+  );
+
+  if (reactivated) {
+    const existing = await isUserAssignedToRound(input.roundId, normalized);
+    if (existing) return existing;
+  }
+
+  const record: ScoringRoundAssignment = {
+    assignmentId: randomUUID(),
+    roundId: input.roundId,
+    userEmail: normalized,
+    allowedGradeIds: input.allowedGradeIds ?? [],
+    allowedClassIds: input.allowedClassIds ?? [],
+    active: true,
+    assignedBy: input.assignedBy.trim().toLowerCase(),
+    assignedAt: now,
+  };
+  await appendRow(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, {
+    assignmentId: record.assignmentId,
+    roundId: record.roundId,
+    userEmail: record.userEmail,
+    allowedGradeIdsJson: JSON.stringify(record.allowedGradeIds),
+    allowedClassIdsJson: JSON.stringify(record.allowedClassIds),
+    active: "TRUE",
+    assignedBy: record.assignedBy,
+    assignedAt: record.assignedAt,
+  });
+  return record;
+}
+
+export async function removeJudgeFromRound(
+  roundId: string,
+  userEmail: string,
+): Promise<boolean> {
+  const normalized = userEmail.trim().toLowerCase();
+  return updateRowWhere(
+    SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS,
+    (row) =>
+      row.roundId === roundId && row.userEmail?.trim().toLowerCase() === normalized,
+    { active: "FALSE" },
+  );
 }

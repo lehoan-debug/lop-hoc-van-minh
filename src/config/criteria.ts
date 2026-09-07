@@ -1,5 +1,10 @@
 import type { CriterionConfig } from "@/types";
 
+/** Seed data được tạo 1 lần khi khởi tạo hệ thống — dùng mốc thời gian cố
+ * định thay vì `Date.now()` để script `init-google-sheet.ts` idempotent
+ * (chạy lại nhiều lần không đổi giá trị). */
+const SEED_TIMESTAMP = "2026-08-25T00:00:00.000Z";
+
 /**
  * 11 tiêu chí chấm điểm — trích NGUYÊN VĂN từ "KH Lớp học văn minh.docx"
  * (mục III.3, bảng "Tiêu chí chấm điểm"), khớp hoàn toàn với 3 bảng chấm
@@ -15,7 +20,10 @@ import type { CriterionConfig } from "@/types";
  * SEED DATA dùng để khởi tạo sheet `Criteria`. Sau khi khởi tạo, sheet
  * `Criteria` là nguồn dữ liệu chính thức.
  */
-export const SEED_CRITERIA: CriterionConfig[] = [
+const SEED_CRITERIA_BASE: Omit<
+  CriterionConfig,
+  "maxScore" | "scoringType" | "gradeIds" | "createdAt" | "updatedAt"
+>[] = [
   {
     criterionId: "C1",
     criterionNumber: 1,
@@ -131,3 +139,12 @@ export const SEED_CRITERIA: CriterionConfig[] = [
     needsReview: false,
   },
 ];
+
+export const SEED_CRITERIA: CriterionConfig[] = SEED_CRITERIA_BASE.map((c) => ({
+  ...c,
+  maxScore: 1,
+  scoringType: "PASS_FAIL",
+  gradeIds: [],
+  createdAt: SEED_TIMESTAMP,
+  updatedAt: SEED_TIMESTAMP,
+}));

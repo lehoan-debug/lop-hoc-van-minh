@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
-import type { Role, Grade } from "@/types";
+import type { Role, UserRole, Grade } from "@/types";
 
 /**
  * Cấu hình Auth.js "edge-safe" — KHÔNG được import bất kỳ module nào chạm tới
@@ -7,8 +7,9 @@ import type { Role, Grade } from "@/types";
  * được trên Edge Runtime — nơi middleware.ts thực thi mặc định).
  *
  * File này chỉ định nghĩa phần khung (pages, session strategy, cách gắn
- * role/allowedGrades từ JWT đã có sẵn vào Session) để middleware có thể GIẢI
- * MÃ token hiện có và đọc role phục vụ redirect — không tính toán/làm mới role.
+ * roles/allowedGrades/homeroomClassIds từ JWT đã có sẵn vào Session) để
+ * middleware có thể GIẢI MÃ token hiện có và đọc role phục vụ redirect —
+ * không tính toán/làm mới role.
  *
  * `auth.ts` (chạy Node runtime — Route Handler, Server Component, Server
  * Action) mở rộng cấu hình này, thêm provider Google và các callback thực sự
@@ -21,8 +22,13 @@ declare module "next-auth" {
       email: string;
       name?: string | null;
       image?: string | null;
+      /** V2: nguồn sự thật cho phân quyền (multi-role). */
+      roles: UserRole[];
+      /** Dẫn xuất = role cao nhất trong `roles` — giữ cho middleware Edge
+       * (chỉ cần biết ADMIN/SUPER_ADMIN hay không) và UI cũ. */
       role: Role;
       allowedGrades: Grade[] | "ALL";
+      homeroomClassIds: string[];
     };
     error?: "ACCESS_DENIED";
   }
@@ -30,8 +36,10 @@ declare module "next-auth" {
 
 declare module "@auth/core/jwt" {
   interface JWT {
+    roles?: UserRole[];
     role?: Role;
     allowedGrades?: Grade[] | "ALL";
+    homeroomClassIds?: string[];
     roleFetchedAt?: number;
     denied?: boolean;
   }
@@ -57,8 +65,10 @@ export const authConfig: NextAuthConfig = {
       if (token.denied) {
         session.error = "ACCESS_DENIED";
       }
+      session.user.roles = token.roles ?? ["JUDGE"];
       session.user.role = token.role ?? "JUDGE";
       session.user.allowedGrades = token.allowedGrades ?? "ALL";
+      session.user.homeroomClassIds = token.homeroomClassIds ?? [];
       return session;
     },
   },

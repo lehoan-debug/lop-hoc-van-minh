@@ -4,8 +4,9 @@ import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
+import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
 import { CRITERIA_COUNT, type CriterionKey } from "@/types";
-import type { ScoreRecord, CriterionConfig, Session_ } from "@/types";
+import type { CriterionSnapshotItem, ScoreRecord, CriterionConfig, Session_ } from "@/types";
 
 const SESSION_LABEL: Record<Session_, string> = {
   MORNING: "Sáng",
@@ -31,12 +32,24 @@ export function HistoryList({
     <div className="space-y-2">
       {scores.map((s) => {
         const open = openId === s.submissionId;
-        let notes: { criterionNumber: number; note: string }[] = [];
-        try {
-          notes = JSON.parse(s.notesJson || "[]");
-        } catch {
-          notes = [];
+        const isV2 = !!s.roundId;
+        let snapshot: CriterionSnapshotItem[] = [];
+        if (isV2) {
+          try {
+            snapshot = JSON.parse(s.criteriaSnapshotJson || "[]");
+          } catch {
+            snapshot = [];
+          }
         }
+        let legacyNotes: { criterionNumber: number; note: string }[] = [];
+        if (!isV2) {
+          try {
+            legacyNotes = JSON.parse(s.notesJson || "[]");
+          } catch {
+            legacyNotes = [];
+          }
+        }
+
         return (
           <div key={s.submissionId} className="rounded-[var(--radius)] border border-border bg-card">
             <button
@@ -51,31 +64,47 @@ export function HistoryList({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base font-bold">
-                  {s.totalCriteriaScore}/{CRITERIA_COUNT}
+                  {getEffectiveScore(s)}/{isV2 ? getEffectiveMaxScore(s) : CRITERIA_COUNT}
                 </span>
                 <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
               </div>
             </button>
             {open && (
               <div className="space-y-1.5 border-t border-border px-4 py-3">
-                {criteria.map((c) => {
-                  const ck = `c${c.criterionNumber}` as CriterionKey;
-                  const val = s[ck];
-                  const note = notes.find((n) => n.criterionNumber === c.criterionNumber)?.note;
-                  return (
-                    <div key={c.criterionId} className="text-sm">
-                      <div className="flex items-center justify-between">
-                        <span>Tiêu chí {c.criterionNumber}</span>
-                        <span className={val === 1 ? "text-success" : "text-warning"}>
-                          {val === 1 ? "Đạt" : "Không đạt"}
-                        </span>
+                {isV2
+                  ? snapshot.map((item, i) => (
+                      <div key={item.criterionId} className="text-sm">
+                        <div className="flex items-center justify-between">
+                          <span>
+                            {i + 1}. {item.name}
+                          </span>
+                          <span className={item.result === "PASS" ? "text-success" : "text-warning"}>
+                            {item.result === "PASS" ? "Đạt" : "Không đạt"} (+{item.awardedScore})
+                          </span>
+                        </div>
+                        {item.note && (
+                          <p className="text-xs italic text-muted-foreground">Ghi chú: {item.note}</p>
+                        )}
                       </div>
-                      {note && (
-                        <p className="text-xs italic text-muted-foreground">Ghi chú: {note}</p>
-                      )}
-                    </div>
-                  );
-                })}
+                    ))
+                  : criteria.map((c) => {
+                      const ck = `c${c.criterionNumber}` as CriterionKey;
+                      const val = s[ck];
+                      const note = legacyNotes.find((n) => n.criterionNumber === c.criterionNumber)?.note;
+                      return (
+                        <div key={c.criterionId} className="text-sm">
+                          <div className="flex items-center justify-between">
+                            <span>Tiêu chí {c.criterionNumber}</span>
+                            <span className={val === 1 ? "text-success" : "text-warning"}>
+                              {val === 1 ? "Đạt" : "Không đạt"}
+                            </span>
+                          </div>
+                          {note && (
+                            <p className="text-xs italic text-muted-foreground">Ghi chú: {note}</p>
+                          )}
+                        </div>
+                      );
+                    })}
               </div>
             )}
           </div>

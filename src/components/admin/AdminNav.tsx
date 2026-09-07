@@ -10,14 +10,20 @@ import {
   BarChart3,
   Users,
   Settings,
+  ClipboardCheck,
+  CalendarClock,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { href: "/judge", label: "Chấm điểm", icon: ClipboardCheck },
   { href: "/admin", label: "Tổng quan", icon: LayoutDashboard },
+  { href: "/admin/scoring-rounds", label: "Đợt chấm", icon: CalendarClock },
   { href: "/admin/results", label: "Kết quả chi tiết", icon: ListChecks },
   { href: "/admin/ranking", label: "Xếp hạng", icon: Trophy },
   { href: "/admin/adjustments", label: "Điểm cộng/trừ", icon: Award },
+  { href: "/admin/criteria", label: "Tiêu chí", icon: SlidersHorizontal },
   { href: "/admin/criteria-analysis", label: "Phân tích tiêu chí", icon: BarChart3 },
   { href: "/admin/users", label: "Tài khoản", icon: Users },
   { href: "/admin/settings", label: "Cấu hình", icon: Settings },
@@ -52,7 +58,12 @@ export function AdminNav({ variant }: { variant: "sidebar" | "mobile" }) {
   return (
     <nav className="hidden w-60 shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-        const active = href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+        const active =
+          href === "/admin"
+            ? pathname === "/admin"
+            : href === "/judge"
+              ? pathname.startsWith("/judge")
+              : pathname.startsWith(href);
         return (
           <Link
             key={href}
@@ -62,6 +73,7 @@ export function AdminNav({ variant }: { variant: "sidebar" | "mobile" }) {
               active
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              href === "/judge" && "mb-2 border-b border-border pb-3",
             )}
           >
             <Icon className="h-4 w-4" />

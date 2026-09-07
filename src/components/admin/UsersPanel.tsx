@@ -9,13 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -24,23 +17,31 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { updateUserAction } from "@/lib/actions/adminActions";
-import type { AppUser, Grade, Role } from "@/types";
+import { canManageAdminRoles } from "@/lib/auth/permissions";
+import { cn } from "@/lib/utils";
+import type { AppUser, ClassConfig, Grade, Role, UserRole } from "@/types";
 
-const ROLE_LABEL: Record<Role, string> = {
+const ROLE_LABEL: Record<UserRole, string> = {
   JUDGE: "Giám khảo",
+  HOMEROOM_TEACHER: "GVCN",
   ADMIN: "Quản trị viên",
   SUPER_ADMIN: "Quản trị viên cấp cao",
 };
 
+const ADMIN_TIER_ROLES: UserRole[] = ["ADMIN", "SUPER_ADMIN"];
+
 export function UsersPanel({
   users,
+  classes,
   currentUserRole,
 }: {
   users: AppUser[];
+  classes: ClassConfig[];
   currentUserRole: Role;
 }) {
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<AppUser | null>(null);
+  const canManageAdmins = canManageAdminRoles({ roles: [currentUserRole] });
 
   return (
     <div>
@@ -52,13 +53,13 @@ export function UsersPanel({
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-border bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Tên</th>
               <th className="px-3 py-2">Vai trò</th>
-              <th className="px-3 py-2">Khối được phân công</th>
+              <th className="px-3 py-2">Lớp chủ nhiệm</th>
               <th className="px-3 py-2">Trạng thái</th>
               <th className="px-3 py-2 text-right">Thao tác</th>
             </tr>
@@ -69,12 +70,16 @@ export function UsersPanel({
                 <td className="px-3 py-2">{u.email}</td>
                 <td className="px-3 py-2">{u.name}</td>
                 <td className="px-3 py-2">
-                  <Badge variant={u.role === "JUDGE" ? "secondary" : "default"}>
-                    {ROLE_LABEL[u.role]}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {u.roles.map((r) => (
+                      <Badge key={r} variant={r === "JUDGE" ? "secondary" : "default"}>
+                        {ROLE_LABEL[r]}
+                      </Badge>
+                    ))}
+                  </div>
                 </td>
                 <td className="px-3 py-2">
-                  {u.allowedGrades === "ALL" ? "Tất cả" : u.allowedGrades.join(", ")}
+                  {u.homeroomClassIds.length > 0 ? u.homeroomClassIds.join(", ") : "—"}
                 </td>
                 <td className="px-3 py-2">
                   {u.active ? (
@@ -104,7 +109,8 @@ export function UsersPanel({
       {(creating || editing) && (
         <UserFormDialog
           existing={editing ?? undefined}
-          currentUserRole={currentUserRole}
+          classes={classes}
+          canManageAdmins={canManageAdmins}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -117,26 +123,42 @@ export function UsersPanel({
 
 function UserFormDialog({
   existing,
-  currentUserRole,
+  classes,
+  canManageAdmins,
   onClose,
 }: {
   existing?: AppUser;
-  currentUserRole: Role;
+  classes: ClassConfig[];
+  canManageAdmins: boolean;
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = React.useState(existing?.email ?? "");
   const [name, setName] = React.useState(existing?.name ?? "");
-  const [role, setRole] = React.useState<Role>(existing?.role ?? "JUDGE");
+  const [roles, setRoles] = React.useState<UserRole[]>(existing?.roles ?? ["JUDGE"]);
   const [active, setActive] = React.useState(existing?.active ?? true);
   const [allAllowed, setAllAllowed] = React.useState(existing?.allowedGrades === "ALL" || !existing);
   const [grades, setGrades] = React.useState<Grade[]>(
     existing?.allowedGrades !== "ALL" && existing?.allowedGrades ? existing.allowedGrades : [],
   );
+  const [homeroomClassIds, setHomeroomClassIds] = React.useState<string[]>(
+    existing?.homeroomClassIds ?? [],
+  );
+
+  const toggleRole = (r: UserRole) => {
+    if (ADMIN_TIER_ROLES.includes(r) && !canManageAdmins) return;
+    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
+  };
 
   const toggleGrade = (g: Grade) => {
     setGrades((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
+  };
+
+  const toggleHomeroomClass = (classId: string) => {
+    setHomeroomClassIds((prev) =>
+      prev.includes(classId) ? prev.filter((x) => x !== classId) : [...prev, classId],
+    );
   };
 
   const handleSubmit = () => {
@@ -144,13 +166,18 @@ function UserFormDialog({
       toast({ variant: "error", title: "Vui lòng nhập đầy đủ email và tên." });
       return;
     }
+    if (roles.length === 0) {
+      toast({ variant: "error", title: "Vui lòng chọn ít nhất 1 vai trò." });
+      return;
+    }
     startTransition(async () => {
       const result = await updateUserAction({
         email: email.trim(),
         name: name.trim(),
-        role,
+        roles,
         active,
         allowedGrades: allAllowed ? "ALL" : grades,
+        homeroomClassIds,
       });
       if (result.ok) {
         toast({ variant: "success", title: "Đã lưu tài khoản." });
@@ -167,7 +194,7 @@ function UserFormDialog({
         <DialogHeader>
           <DialogTitle>{existing ? "Chỉnh sửa tài khoản" : "Thêm tài khoản"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
           <div>
             <Label>Email (Google)</Label>
             <Input
@@ -183,23 +210,63 @@ function UserFormDialog({
             <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
           </div>
           <div>
-            <Label>Vai trò</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-              <SelectTrigger className="mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="JUDGE">Giám khảo</SelectItem>
-                <SelectItem value="ADMIN">Quản trị viên</SelectItem>
-                {currentUserRole === "SUPER_ADMIN" && (
-                  <SelectItem value="SUPER_ADMIN">Quản trị viên cấp cao</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <Label>Vai trò (có thể chọn nhiều)</Label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {(["JUDGE", "HOMEROOM_TEACHER", "ADMIN", "SUPER_ADMIN"] as UserRole[]).map((r) => {
+                const isAdminTier = ADMIN_TIER_ROLES.includes(r);
+                const disabled = isAdminTier && !canManageAdmins;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggleRole(r)}
+                    title={disabled ? "Chỉ Quản trị viên cấp cao mới cấp được quyền này" : undefined}
+                    className={cn(
+                      "rounded-md border px-3 py-1.5 text-sm font-medium",
+                      roles.includes(r)
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border",
+                      disabled && "cursor-not-allowed opacity-40",
+                    )}
+                  >
+                    {ROLE_LABEL[r]}
+                  </button>
+                );
+              })}
+            </div>
+            {!canManageAdmins && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Chỉ Quản trị viên cấp cao mới có thể cấp/thu hồi quyền Quản trị viên.
+              </p>
+            )}
           </div>
 
+          {roles.includes("HOMEROOM_TEACHER") && (
+            <div>
+              <Label>Lớp chủ nhiệm</Label>
+              <div className="mt-1 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border p-2">
+                {classes.map((c) => (
+                  <button
+                    key={c.classId}
+                    type="button"
+                    onClick={() => toggleHomeroomClass(c.classId)}
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-xs font-medium",
+                      homeroomClassIds.includes(c.classId)
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border",
+                    )}
+                  >
+                    {c.className}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
-            <Label>Được phép chấm tất cả khối</Label>
+            <Label>Được phép chấm tất cả khối (legacy)</Label>
             <Switch checked={allAllowed} onCheckedChange={setAllAllowed} />
           </div>
           {!allAllowed && (
@@ -209,11 +276,12 @@ function UserFormDialog({
                   key={g}
                   type="button"
                   onClick={() => toggleGrade(g)}
-                  className={
+                  className={cn(
+                    "rounded-md border px-3 py-1.5 text-sm",
                     grades.includes(g)
-                      ? "rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
-                      : "rounded-md border border-border px-3 py-1.5 text-sm"
-                  }
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : "border-border",
+                  )}
                 >
                   Khối {g}
                 </button>

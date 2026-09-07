@@ -4,10 +4,15 @@ import type { DailyScoreCombineModeSetting } from "@/types";
 export type DailyScoreCombineMode = DailyScoreCombineModeSetting;
 
 export interface DailyScoreInput {
-  /** Tổng điểm 11 tiêu chí buổi Sáng (0-11), null nếu chưa chấm buổi này. */
+  /** Tổng điểm tiêu chí buổi Sáng, null nếu chưa chấm buổi này. */
   morningCriteriaScore?: number | null;
-  /** Tổng điểm 11 tiêu chí buổi Chiều (0-11), null nếu chưa chấm buổi này. */
+  /** Điểm tối đa có thể đạt của buổi Sáng (V2: tổng maxScore tiêu chí thực tế
+   * trong snapshot; bỏ trống -> mặc định CRITERIA_COUNT, đúng hành vi V1). */
+  morningMaxScore?: number | null;
+  /** Tổng điểm tiêu chí buổi Chiều, null nếu chưa chấm buổi này. */
   afternoonCriteriaScore?: number | null;
+  /** Điểm tối đa có thể đạt của buổi Chiều — tương tự morningMaxScore. */
+  afternoonMaxScore?: number | null;
   /** Tổng điểm thưởng ghi nhận trong ngày cho lớp. */
   bonusTotal: number;
   /** Tổng điểm trừ ghi nhận trong ngày cho lớp (số dương). */
@@ -47,7 +52,8 @@ export interface DailyScoreResult {
    * - trừ. `null` nếu officialJudgeScore là null. */
   officialDailyScore: number | null;
   /** Điểm BGK tối đa có thể đạt ứng với officialJudgeScore. 0 nếu combineMode
-   * = "UNCONFIRMED" hoặc chưa có buổi nào được chấm. */
+   * = "UNCONFIRMED" hoặc chưa có buổi nào được chấm. Động theo tổng maxScore
+   * tiêu chí thực tế của (các) buổi đã chấm (V2), không hard-code 11. */
   maxPossibleOfficialScore: number;
 }
 
@@ -64,7 +70,15 @@ export interface DailyScoreResult {
 export function calculateDailyScore(input: DailyScoreInput): DailyScoreResult {
   const morning = input.morningCriteriaScore ?? null;
   const afternoon = input.afternoonCriteriaScore ?? null;
+  // V1 không truyền max theo buổi -> mặc định CRITERIA_COUNT (11), giữ đúng
+  // hành vi cũ. V2 luôn truyền max thực tế (tổng maxScore tiêu chí áp dụng).
+  const morningMax = morning !== null ? (input.morningMaxScore ?? CRITERIA_COUNT) : null;
+  const afternoonMax = afternoon !== null ? (input.afternoonMaxScore ?? CRITERIA_COUNT) : null;
+
   const sessionScores = [morning, afternoon].filter(
+    (s): s is number => s !== null,
+  );
+  const sessionMaxes = [morningMax, afternoonMax].filter(
     (s): s is number => s !== null,
   );
   const sessionsGraded = sessionScores.length as 0 | 1 | 2;
@@ -73,6 +87,8 @@ export function calculateDailyScore(input: DailyScoreInput): DailyScoreResult {
     sessionsGraded > 0 ? sessionScores.reduce((a, b) => a + b, 0) : null;
   const averageScore =
     sessionsGraded > 0 ? (sumScore as number) / sessionsGraded : null;
+  const sumMax = sessionMaxes.length > 0 ? sessionMaxes.reduce((a, b) => a + b, 0) : 0;
+  const averageMax = sessionMaxes.length > 0 ? sumMax / sessionMaxes.length : 0;
 
   let officialJudgeScore: number | null = null;
   let maxPossibleOfficialScore = 0;
@@ -80,10 +96,10 @@ export function calculateDailyScore(input: DailyScoreInput): DailyScoreResult {
   if (sessionsGraded > 0) {
     if (input.combineMode === "SUM") {
       officialJudgeScore = sumScore;
-      maxPossibleOfficialScore = CRITERIA_COUNT * sessionsGraded;
+      maxPossibleOfficialScore = sumMax;
     } else if (input.combineMode === "AVERAGE") {
       officialJudgeScore = averageScore;
-      maxPossibleOfficialScore = CRITERIA_COUNT;
+      maxPossibleOfficialScore = averageMax;
     }
     // combineMode === "UNCONFIRMED" -> giữ nguyên null/0, không tạo điểm chính thức.
   }

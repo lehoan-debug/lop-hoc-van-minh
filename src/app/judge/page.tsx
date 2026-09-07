@@ -1,47 +1,58 @@
 import { requireUser } from "@/lib/auth/session";
-import { getClasses, getScores, getSettings } from "@/lib/google/sheets";
-import { todayVN, currentTimeVN } from "@/lib/timezone/timezone";
-import { JudgeHome } from "@/components/scoring/JudgeHome";
-import type { Grade, Session_ } from "@/types";
+import { canAccessScoring } from "@/lib/auth/permissions";
+import {
+  getRoundAssignmentsForUser,
+  getScoringRounds,
+  getClasses,
+  getScores,
+} from "@/lib/google/sheets";
+import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
+import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
+import { JudgeRoundsHome, type RoundWithProgress } from "@/components/scoring/JudgeRoundsHome";
 
 export default async function JudgePage() {
   const user = await requireUser();
-  const [allClasses, settings] = await Promise.all([
+
+  if (!canAccessScoring(user)) {
+    return (
+      <div className="mx-auto max-w-lg p-6 text-center text-muted-foreground">
+        Tài khoản của bạn không có quyền truy cập chức năng chấm điểm.
+      </div>
+    );
+  }
+
+  const [assignments, allRounds, allClasses] = await Promise.all([
+    getRoundAssignmentsForUser(user.email),
+    getScoringRounds(),
     getClasses({ activeOnly: true }),
-    getSettings(),
   ]);
 
-  const enabledGrades = settings.ENABLED_GRADES.length
-    ? settings.ENABLED_GRADES
-    : (["10", "11", "12"] as Grade[]);
+  const assignedRoundIds = new Set(assignments.map((a) => a.roundId));
+  const myRounds = allRounds.filter((r) => assignedRoundIds.has(r.roundId));
 
-  const visibleGrades: Grade[] = enabledGrades.filter(
-    (g) => user.allowedGrades === "ALL" || user.allowedGrades.includes(g),
+  const now = new Date();
+  const items: RoundWithProgress[] = await Promise.all(
+    myRounds.map(async (round) => {
+      const assignment = assignments.find((a) => a.roundId === round.roundId)!;
+      const classesInScope = allClasses.filter(
+        (c) =>
+          isClassInRoundScope(round, c.classId, c.grade) &&
+          isClassInAssignmentScope(assignment, c.classId, c.grade),
+      );
+      const scores = await getScores({ roundId: round.roundId });
+      const doneClassIds = new Set(scores.map((s) => s.classId));
+      const doneCount = classesInScope.filter((c) => doneClassIds.has(c.classId)).length;
+
+      return {
+        round,
+        effectiveStatus: getEffectiveRoundStatus(round, now),
+        assignedClassesCount: classesInScope.length,
+        doneCount,
+      };
+    }),
   );
 
-  const classes = allClasses.filter((c) => visibleGrades.includes(c.grade));
+  items.sort((a, b) => a.round.startsAt.localeCompare(b.round.startsAt));
 
-  const date = todayVN();
-  const todayScores = await getScores({ dateFrom: date, dateTo: date, judgeEmail: user.email });
-  const scoredKeys = todayScores.map((s) => `${s.classId}__${s.session}`);
-
-  const currentTime = currentTimeVN();
-  const defaultSession: Session_ = currentTime < "12:00" ? "MORNING" : "AFTERNOON";
-
-  return (
-    <JudgeHome
-      userName={user.name}
-      userEmail={user.email}
-      date={date}
-      classes={classes}
-      grades={visibleGrades}
-      scoredKeys={scoredKeys}
-      defaultSession={defaultSession}
-      currentTime={currentTime}
-      sessionWindows={{
-        MORNING: { start: settings.MORNING_SESSION_START, end: settings.MORNING_SESSION_END },
-        AFTERNOON: { start: settings.AFTERNOON_SESSION_START, end: settings.AFTERNOON_SESSION_END },
-      }}
-    />
-  );
+  return <JudgeRoundsHome userName={user.name} items={items} />;
 }

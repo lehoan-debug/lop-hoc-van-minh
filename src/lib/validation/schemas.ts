@@ -55,12 +55,38 @@ export const editAdjustmentSchema = createAdjustmentSchema.extend({
   adjustmentId: z.string().uuid(),
 });
 
+export const userRoleSchema = z.enum([
+  "JUDGE",
+  "HOMEROOM_TEACHER",
+  "ADMIN",
+  "SUPER_ADMIN",
+]);
+
 export const updateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
-  role: z.enum(["JUDGE", "ADMIN", "SUPER_ADMIN"]),
+  roles: z.array(userRoleSchema).min(1, "Vui lòng chọn ít nhất 1 vai trò"),
   active: z.boolean(),
   allowedGrades: z.union([z.literal("ALL"), z.array(gradeSchema)]),
+  homeroomClassIds: z.array(z.string()).default([]),
+});
+
+export const createCriterionSchema = z.object({
+  criterionName: z.string().min(1, "Vui lòng nhập tên tiêu chí").max(500),
+  description: z.string().max(2000).optional().default(""),
+  maxScore: z.number().positive("Điểm phải lớn hơn 0").max(100),
+  gradeIds: z.array(gradeSchema).default([]),
+  sortOrder: z.number().int().default(0),
+});
+
+export const updateCriterionFullSchema = z.object({
+  criterionId: z.string().min(1),
+  criterionName: z.string().min(1).max(500).optional(),
+  description: z.string().max(2000).optional(),
+  maxScore: z.number().positive().max(100).optional(),
+  gradeIds: z.array(gradeSchema).optional(),
+  sortOrder: z.number().int().optional(),
+  active: z.boolean().optional(),
 });
 
 export const updateSettingSchema = z.object({

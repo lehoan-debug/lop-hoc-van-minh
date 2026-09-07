@@ -45,8 +45,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (needsRefresh) {
         const appUser = await getUserByEmail(email);
         if (appUser && appUser.active) {
+          token.roles = appUser.roles;
           token.role = appUser.role;
           token.allowedGrades = appUser.allowedGrades;
+          token.homeroomClassIds = appUser.homeroomClassIds;
           token.denied = false;
         } else {
           token.denied = true;

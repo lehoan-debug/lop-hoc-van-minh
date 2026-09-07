@@ -5,46 +5,59 @@ import { Check, X, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 
-interface CriterionCardProps {
-  number: number;
+interface RoundCriterionCardProps {
+  index: number;
+  total: number;
   name: string;
-  value: 0 | 1 | undefined;
+  maxScore: number;
+  value: "PASS" | "FAIL" | undefined;
   note: string;
-  onChange: (value: 0 | 1) => void;
+  onChange: (value: "PASS" | "FAIL") => void;
   onNoteChange: (note: string) => void;
 }
 
-export function CriterionCard({
-  number,
+function formatScore(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(n);
+}
+
+export function RoundCriterionCard({
+  index,
+  total,
   name,
+  maxScore,
   value,
   note,
   onChange,
   onNoteChange,
-}: CriterionCardProps) {
+}: RoundCriterionCardProps) {
   const [showNote, setShowNote] = React.useState(!!note);
 
   return (
     <div
       className={cn(
         "rounded-[var(--radius)] border p-4 transition-colors",
-        value === 1 && "border-success/40 bg-success/5",
-        value === 0 && "border-warning/40 bg-warning/5",
+        value === "PASS" && "border-success/40 bg-success/5",
+        value === "FAIL" && "border-warning/40 bg-warning/5",
         value === undefined && "border-border bg-card",
       )}
     >
-      <p className="mb-3 text-sm font-semibold text-muted-foreground">
-        TIÊU CHÍ {number}
-      </p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold text-muted-foreground">
+          {index} / {total}
+        </p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Điểm: {formatScore(maxScore)}
+        </p>
+      </div>
       <p className="mb-4 text-[15px] leading-relaxed">{name}</p>
 
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => onChange(1)}
+          onClick={() => onChange("PASS")}
           className={cn(
             "flex h-[52px] items-center justify-center gap-2 rounded-[var(--radius)] border text-sm font-semibold transition-colors",
-            value === 1
+            value === "PASS"
               ? "border-success bg-success text-success-foreground"
               : "border-border bg-background text-foreground hover:bg-accent",
           )}
@@ -55,12 +68,12 @@ export function CriterionCard({
         <button
           type="button"
           onClick={() => {
-            onChange(0);
+            onChange("FAIL");
             setShowNote(true);
           }}
           className={cn(
             "flex h-[52px] items-center justify-center gap-2 rounded-[var(--radius)] border text-sm font-semibold transition-colors",
-            value === 0
+            value === "FAIL"
               ? "border-warning bg-warning text-warning-foreground"
               : "border-border bg-background text-foreground hover:bg-accent",
           )}
@@ -70,13 +83,13 @@ export function CriterionCard({
         </button>
       </div>
 
-      {value === 0 && (
+      {value === "FAIL" && (
         <div className="mt-3">
           {showNote ? (
             <Textarea
               value={note}
               onChange={(e) => onNoteChange(e.target.value)}
-              placeholder="Ghi chú / minh chứng (ví dụ: Còn 2 balo giữa lối đi.)"
+              placeholder="Ghi chú / minh chứng"
               className="text-sm"
               rows={2}
             />

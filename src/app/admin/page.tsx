@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown } from "lucide-react";
+import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown, FileSpreadsheet } from "lucide-react";
 import { getClasses, getScores, getAdjustments, getUsers } from "@/lib/google/sheets";
 import { todayVN } from "@/lib/timezone/timezone";
 import { computeDashboardCards, buildClassProgress, getIncompleteClasses } from "@/lib/admin/aggregate";
@@ -41,7 +41,16 @@ export default async function AdminDashboardPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Tổng quan</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold">Tổng quan</h1>
+        <a
+          href={`/api/admin/export/xlsx?date=${date}${grade ? `&grade=${grade}` : ""}${classId ? `&classId=${classId}` : ""}${judgeEmail ? `&judgeEmail=${judgeEmail}` : ""}${sessionFilter ? `&session=${sessionFilter}` : ""}`}
+          className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+          Xuất Excel
+        </a>
+      </div>
 
       <DashboardFilters classes={allClasses} judges={judges} showTimeRange />
 

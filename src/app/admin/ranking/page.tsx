@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, FileSpreadsheet } from "lucide-react";
 import {
   getClasses,
   getScores,
@@ -43,7 +43,18 @@ export default async function AdminRankingPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Xếp hạng Lớp học Văn minh</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold">Xếp hạng Lớp học Văn minh</h1>
+        {!isUnconfirmed && (
+          <a
+            href={`/api/admin/export/xlsx?dateFrom=${from}&dateTo=${to}&yearMonth=${yearMonth}&includeRanking=1`}
+            className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Xuất Excel
+          </a>
+        )}
+      </div>
       <div className="mb-4 flex items-end gap-3 rounded-[var(--radius)] border border-border bg-card p-3">
         <MonthPicker value={yearMonth} />
         <p className="pb-2.5 text-xs text-muted-foreground">

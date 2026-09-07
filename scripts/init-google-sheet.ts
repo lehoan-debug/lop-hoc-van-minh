@@ -79,6 +79,11 @@ async function main() {
       active: c.active ? "TRUE" : "FALSE",
       sortOrder: String(c.sortOrder),
       needsReview: c.needsReview ? "TRUE" : "FALSE",
+      maxScore: String(c.maxScore),
+      scoringType: c.scoringType,
+      gradeIdsJson: JSON.stringify(c.gradeIds),
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
     })),
     "tiêu chí chấm điểm",
   );

@@ -18,7 +18,9 @@ export default auth((req) => {
   const role = req.auth?.user?.role;
 
   const isProtected =
-    pathname.startsWith("/judge") || pathname.startsWith("/admin");
+    pathname.startsWith("/judge") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/homeroom");
 
   if (!isProtected) return NextResponse.next();
 
@@ -40,5 +42,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/judge/:path*", "/admin/:path*"],
+  matcher: ["/judge/:path*", "/admin/:path*", "/homeroom/:path*"],
 };

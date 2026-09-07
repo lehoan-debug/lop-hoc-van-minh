@@ -4,6 +4,7 @@ import { currentYearMonthVN, getMonthDateRange, formatDateVN, formatTimeVN } fro
 import { computeCriteriaFailureStats, getCriterionViolations } from "@/lib/admin/aggregate";
 import { CriteriaFailureChart } from "@/components/admin/CriteriaFailureChart";
 import { cn } from "@/lib/utils";
+import type { CriterionSnapshotItem } from "@/types";
 
 export default async function CriteriaAnalysisPage({
   searchParams,
@@ -13,19 +14,20 @@ export default async function CriteriaAnalysisPage({
   const sp = await searchParams;
   const yearMonth = sp.month || currentYearMonthVN();
   const { from, to } = getMonthDateRange(yearMonth);
-  const selectedCriterion = sp.criterion ? Number(sp.criterion) : undefined;
+  const selectedCriterionId = sp.criterion || undefined;
 
   const [scores, criteria] = await Promise.all([
     getScores({ dateFrom: from, dateTo: to }),
-    getCriteria({ activeOnly: true }),
+    getCriteria(),
   ]);
 
   const stats = computeCriteriaFailureStats(scores, criteria);
-  const violations = selectedCriterion
-    ? getCriterionViolations(scores, selectedCriterion).sort((a, b) =>
+  const violations = selectedCriterionId
+    ? getCriterionViolations(scores, selectedCriterionId, criteria).sort((a, b) =>
         b.timestamp.localeCompare(a.timestamp),
       )
     : [];
+  const selectedStat = stats.find((s) => s.criterionId === selectedCriterionId);
 
   return (
     <div>
@@ -65,19 +67,19 @@ export default async function CriteriaAnalysisPage({
           <h2 className="mb-3 font-semibold">Xếp hạng tiêu chí vi phạm</h2>
           <ol className="space-y-2">
             {stats.map((s, i) => (
-              <li key={s.criterionNumber}>
+              <li key={s.criterionId}>
                 <Link
-                  href={`/admin/criteria-analysis?month=${yearMonth}&criterion=${s.criterionNumber}`}
+                  href={`/admin/criteria-analysis?month=${yearMonth}&criterion=${encodeURIComponent(s.criterionId)}`}
                   className={cn(
                     "flex items-center justify-between rounded-[var(--radius)] border px-3 py-2 text-sm transition-colors hover:bg-accent",
-                    selectedCriterion === s.criterionNumber
+                    selectedCriterionId === s.criterionId
                       ? "border-primary bg-primary/5"
                       : "border-border",
                   )}
                 >
                   <span>
                     <span className="mr-2 font-semibold text-muted-foreground">{i + 1}.</span>
-                    Tiêu chí {s.criterionNumber} — {truncate(s.criterionName, 40)}
+                    {truncate(s.criterionName, 45)}
                   </span>
                   <span className="shrink-0 font-bold text-warning">{s.failCount} lần</span>
                 </Link>
@@ -91,20 +93,28 @@ export default async function CriteriaAnalysisPage({
 
         <div className="rounded-[var(--radius)] border border-border bg-card p-4">
           <h2 className="mb-3 font-semibold">
-            {selectedCriterion
-              ? `Chi tiết vi phạm — Tiêu chí ${selectedCriterion}`
-              : "Chọn một tiêu chí để xem chi tiết"}
+            {selectedStat ? `Chi tiết vi phạm — ${truncate(selectedStat.criterionName, 40)}` : "Chọn một tiêu chí để xem chi tiết"}
           </h2>
-          {selectedCriterion ? (
+          {selectedCriterionId ? (
             <div className="max-h-[28rem] space-y-2 overflow-y-auto">
               {violations.map((v) => {
-                let notes: { criterionNumber: number; note: string }[] = [];
-                try {
-                  notes = JSON.parse(v.notesJson || "[]");
-                } catch {
-                  notes = [];
+                let note: string | undefined;
+                if (v.roundId) {
+                  try {
+                    const snapshot: CriterionSnapshotItem[] = JSON.parse(v.criteriaSnapshotJson || "[]");
+                    note = snapshot.find((i) => i.criterionId === selectedCriterionId)?.note;
+                  } catch {
+                    note = undefined;
+                  }
+                } else {
+                  try {
+                    const legacyNotes: { criterionNumber: number; note: string }[] = JSON.parse(v.notesJson || "[]");
+                    const num = criteria.find((c) => c.criterionId === selectedCriterionId)?.criterionNumber;
+                    note = legacyNotes.find((n) => n.criterionNumber === num)?.note;
+                  } catch {
+                    note = undefined;
+                  }
                 }
-                const note = notes.find((n) => n.criterionNumber === selectedCriterion)?.note;
                 return (
                   <div key={v.submissionId} className="rounded-md border border-border p-2 text-sm">
                     <div className="flex items-center justify-between">

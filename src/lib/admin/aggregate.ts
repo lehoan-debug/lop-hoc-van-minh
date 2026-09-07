@@ -6,11 +6,15 @@ import type {
   ScoreRecord,
   Session_,
 } from "@/types";
-import type { CriterionKey } from "@/types";
 import {
   calculateDailyScore,
   type DailyScoreCombineMode,
 } from "@/lib/scoring/dailyScore";
+import {
+  getEffectiveScore,
+  getEffectiveMaxScore,
+  getEffectiveCriteriaResults,
+} from "@/lib/scoring/effectiveScore";
 import { rankClasses, type ClassRankingResult, type ClassDailyResult } from "@/lib/ranking/rankClasses";
 
 // ---------- Dashboard cards ----------
@@ -34,7 +38,7 @@ export function computeDashboardCards(params: {
   const scoredClassIds = new Set(scoresInScope.map((s) => s.classId));
   const averageScore =
     scoresInScope.length > 0
-      ? scoresInScope.reduce((sum, s) => sum + s.totalCriteriaScore, 0) /
+      ? scoresInScope.reduce((sum, s) => sum + getEffectiveScore(s), 0) /
         scoresInScope.length
       : null;
 
@@ -91,6 +95,11 @@ export function getIncompleteClasses(
 // ---------- Phân tích tiêu chí ----------
 
 export interface CriterionFailureStat {
+  /** Định danh ổn định của tiêu chí (V2: criterionId thật; V1: "c{n}"). */
+  criterionId: string;
+  /** Số thứ tự trong bộ tiêu chí hiện tại, 0 nếu không xác định được (tiêu
+   * chí V2 không còn tồn tại trong danh sách Criteria hiện tại). Chỉ dùng để
+   * hiển thị tham khảo, KHÔNG dùng làm khoá gộp (dùng criterionId). */
   criterionNumber: number;
   criterionName: string;
   failCount: number;
@@ -98,31 +107,57 @@ export interface CriterionFailureStat {
   failRate: number;
 }
 
+/**
+ * Gộp thống kê "không đạt" theo TỪNG TIÊU CHÍ trên toàn bộ `scores` truyền
+ * vào, đọc đúng kết quả của cả bản ghi V1 (c1..c11) lẫn V2 (snapshot động) —
+ * xem `getEffectiveCriteriaResults`. Không hard-code 11 tiêu chí.
+ */
 export function computeCriteriaFailureStats(
   scores: ScoreRecord[],
   criteria: CriterionConfig[],
 ): CriterionFailureStat[] {
-  return criteria
-    .map((c) => {
-      const ck = `c${c.criterionNumber}` as CriterionKey;
-      const failCount = scores.filter((s) => s[ck] === 0).length;
-      return {
-        criterionNumber: c.criterionNumber,
-        criterionName: c.criterionName,
-        failCount,
-        totalCount: scores.length,
-        failRate: scores.length > 0 ? failCount / scores.length : 0,
+  const byId = new Map<
+    string,
+    { name: string; number: number; fail: number; total: number }
+  >();
+
+  for (const s of scores) {
+    const results = getEffectiveCriteriaResults(s, criteria);
+    for (const r of results) {
+      const entry = byId.get(r.criterionId) ?? {
+        name: r.criterionName,
+        number: criteria.find((c) => c.criterionId === r.criterionId)?.criterionNumber ?? 0,
+        fail: 0,
+        total: 0,
       };
-    })
+      entry.total += 1;
+      if (r.result === "FAIL") entry.fail += 1;
+      byId.set(r.criterionId, entry);
+    }
+  }
+
+  return Array.from(byId.entries())
+    .map(([criterionId, v]) => ({
+      criterionId,
+      criterionNumber: v.number,
+      criterionName: v.name,
+      failCount: v.fail,
+      totalCount: v.total,
+      failRate: v.total > 0 ? v.fail / v.total : 0,
+    }))
     .sort((a, b) => b.failCount - a.failCount);
 }
 
 export function getCriterionViolations(
   scores: ScoreRecord[],
-  criterionNumber: number,
+  criterionId: string,
+  criteria: CriterionConfig[],
 ): ScoreRecord[] {
-  const ck = `c${criterionNumber}` as CriterionKey;
-  return scores.filter((s) => s[ck] === 0);
+  return scores.filter((s) =>
+    getEffectiveCriteriaResults(s, criteria).some(
+      (r) => r.criterionId === criterionId && r.result === "FAIL",
+    ),
+  );
 }
 
 // ---------- Xếp hạng tháng ----------
@@ -176,8 +211,10 @@ export function computeMonthlyRankingForGrade(params: {
         .reduce((sum, a) => sum + a.points, 0);
 
       const result = calculateDailyScore({
-        morningCriteriaScore: morning?.totalCriteriaScore ?? null,
-        afternoonCriteriaScore: afternoon?.totalCriteriaScore ?? null,
+        morningCriteriaScore: morning ? getEffectiveScore(morning) : null,
+        morningMaxScore: morning ? getEffectiveMaxScore(morning) : null,
+        afternoonCriteriaScore: afternoon ? getEffectiveScore(afternoon) : null,
+        afternoonMaxScore: afternoon ? getEffectiveMaxScore(afternoon) : null,
         bonusTotal,
         penaltyTotal,
         combineMode,
@@ -272,18 +309,20 @@ export function computeClassDailyScoreSummary(params: {
       const afternoon = classScores.find(
         (s) => s.date === date && s.session === "AFTERNOON",
       );
-      if (morning) morningScores.push(morning.totalCriteriaScore);
-      if (afternoon) afternoonScores.push(afternoon.totalCriteriaScore);
-      if (morning && afternoon) {
+      const morningScore = morning ? getEffectiveScore(morning) : null;
+      const afternoonScore = afternoon ? getEffectiveScore(afternoon) : null;
+      if (morningScore !== null) morningScores.push(morningScore);
+      if (afternoonScore !== null) afternoonScores.push(afternoonScore);
+      if (morningScore !== null && afternoonScore !== null) {
         daysComplete++;
-        sumPerDay.push(morning.totalCriteriaScore + afternoon.totalCriteriaScore);
-        avgPerDay.push((morning.totalCriteriaScore + afternoon.totalCriteriaScore) / 2);
-      } else if (morning) {
-        sumPerDay.push(morning.totalCriteriaScore);
-        avgPerDay.push(morning.totalCriteriaScore);
-      } else if (afternoon) {
-        sumPerDay.push(afternoon.totalCriteriaScore);
-        avgPerDay.push(afternoon.totalCriteriaScore);
+        sumPerDay.push(morningScore + afternoonScore);
+        avgPerDay.push((morningScore + afternoonScore) / 2);
+      } else if (morningScore !== null) {
+        sumPerDay.push(morningScore);
+        avgPerDay.push(morningScore);
+      } else if (afternoonScore !== null) {
+        sumPerDay.push(afternoonScore);
+        avgPerDay.push(afternoonScore);
       }
     }
 

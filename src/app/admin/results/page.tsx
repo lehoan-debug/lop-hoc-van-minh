@@ -1,6 +1,7 @@
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { getClasses, getScores, getCriteria, getUsers } from "@/lib/google/sheets";
 import { todayVN } from "@/lib/timezone/timezone";
+import { canAccessScoring } from "@/lib/auth/permissions";
 import { DashboardFilters } from "@/components/admin/DashboardFilters";
 import { ResultsTable } from "@/components/admin/ResultsTable";
 import type { Grade, Session_ } from "@/types";
@@ -25,7 +26,7 @@ export default async function AdminResultsPage({
   ]);
 
   const sorted = [...scores].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const judges = allJudges.filter((u) => u.role === "JUDGE");
+  const judges = allJudges.filter((u) => canAccessScoring(u));
 
   const exportParams = new URLSearchParams();
   exportParams.set("date", date);
@@ -38,13 +39,22 @@ export default async function AdminResultsPage({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold">Kết quả chi tiết</h1>
-        <a
-          href={`/api/admin/export?${exportParams.toString()}`}
-          className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
-        >
-          <Download className="h-4 w-4" />
-          Xuất CSV
-        </a>
+        <div className="flex gap-2">
+          <a
+            href={`/api/admin/export?${exportParams.toString()}`}
+            className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <Download className="h-4 w-4" />
+            Xuất CSV
+          </a>
+          <a
+            href={`/api/admin/export/xlsx?${exportParams.toString()}`}
+            className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Xuất Excel
+          </a>
+        </div>
       </div>
       <DashboardFilters classes={classes} judges={judges} />
       <ResultsTable scores={sorted} criteria={criteria} />
