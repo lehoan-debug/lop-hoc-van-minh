@@ -3,6 +3,7 @@ import {
   checkRoundEligibility,
   isClassInRoundScope,
   isClassInAssignmentScope,
+  eligibilityMessage,
 } from "@/lib/rounds/eligibility";
 import { zonedTimeToUtc } from "@/lib/timezone/timezone";
 import type { ScoringRound, ScoringRoundAssignment } from "@/types";
@@ -27,6 +28,11 @@ function makeRound(overrides: Partial<ScoringRound> = {}): ScoringRound {
   };
 }
 
+// Mặc định có allowedClassIds=["10A1"] (khớp classId dùng ở hầu hết test
+// dưới đây) — CÁC TEST VỀ THỜI GIAN/TRẠNG THÁI ROUND không nhằm kiểm tra
+// phạm vi phân công theo lớp, nên phải mặc định "đã được phân công đúng lớp"
+// để không bị chặn nhầm bởi bug fix ở isClassInAssignmentScope (xem test
+// riêng "assignment rỗng cả 2 field" bên dưới cho đúng hành vi mới).
 function makeAssignment(
   overrides: Partial<ScoringRoundAssignment> = {},
 ): ScoringRoundAssignment {
@@ -35,7 +41,7 @@ function makeAssignment(
     roundId: "r1",
     userEmail: "judge@fpt.edu.vn",
     allowedGradeIds: [],
-    allowedClassIds: [],
+    allowedClassIds: ["10A1"],
     active: true,
     assignedBy: "admin@fpt.edu.vn",
     assignedAt: "",
@@ -162,9 +168,78 @@ describe("isClassInRoundScope / isClassInAssignmentScope", () => {
     expect(isClassInRoundScope({ classIds: [], gradeIds: ["11"] }, "10A1", "10")).toBe(false);
     expect(isClassInRoundScope({ classIds: [], gradeIds: ["10"] }, "10A1", "10")).toBe(true);
   });
-  it("assignment rỗng cả 2 field -> không thu hẹp thêm", () => {
+
+  // Bug fix cốt lõi của lần nâng cấp phân công theo lớp — xem
+  // docs/CLASS_ASSIGNMENT_UPGRADE.md mục 2. TRƯỚC ĐÂY: rỗng cả 2 field =
+  // "không thu hẹp thêm" = được chấm MỌI lớp trong Round (SAI nghiệp vụ,
+  // khiến "có mặt trong Round" bị hiểu nhầm thành "được chấm cả Round").
+  it("assignment rỗng cả 2 field -> KHÔNG được chấm lớp nào (bug fix)", () => {
     expect(
       isClassInAssignmentScope({ allowedClassIds: [], allowedGradeIds: [] }, "10A1", "10"),
+    ).toBe(false);
+  });
+  it("assignment có allowedClassIds -> chỉ đúng lớp đó mới được", () => {
+    expect(
+      isClassInAssignmentScope({ allowedClassIds: ["10A1"], allowedGradeIds: [] }, "10A1", "10"),
     ).toBe(true);
+    expect(
+      isClassInAssignmentScope({ allowedClassIds: ["10A1"], allowedGradeIds: [] }, "10A2", "10"),
+    ).toBe(false);
+  });
+  it("assignment có allowedGradeIds (gán cả khối) -> đúng khối là được", () => {
+    expect(
+      isClassInAssignmentScope({ allowedClassIds: [], allowedGradeIds: ["10"] }, "10A9", "10"),
+    ).toBe(true);
+    expect(
+      isClassInAssignmentScope({ allowedClassIds: [], allowedGradeIds: ["10"] }, "11A1", "11"),
+    ).toBe(false);
+  });
+});
+
+describe("checkRoundEligibility — người có mặt trong Round nhưng chưa được tick lớp nào", () => {
+  it("assignment tồn tại nhưng allowedClassIds/allowedGradeIds rỗng -> OUT_OF_ASSIGNMENT_SCOPE", () => {
+    const result = checkRoundEligibility({
+      round: makeRound(),
+      assignment: makeAssignment({ allowedClassIds: [], allowedGradeIds: [] }),
+      classId: "10A1",
+      grade: "10",
+      now: OPEN_NOW,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("OUT_OF_ASSIGNMENT_SCOPE");
+  });
+});
+
+describe("1 người được phân nhiều lớp / 1 lớp được phân nhiều người (mục 24 #7, #8)", () => {
+  it("1 người có allowedClassIds gồm nhiều lớp -> được chấm tất cả các lớp đó", () => {
+    const assignment = makeAssignment({ allowedClassIds: ["10A1", "10A2", "10A3"] });
+    for (const classId of ["10A1", "10A2", "10A3"]) {
+      expect(isClassInAssignmentScope(assignment, classId, "10")).toBe(true);
+    }
+    expect(isClassInAssignmentScope(assignment, "10A4", "10")).toBe(false);
+  });
+
+  it("1 lớp xuất hiện trong allowedClassIds của nhiều assignment khác nhau -> mỗi người đều được chấm", () => {
+    const round = makeRound();
+    const assignmentA = makeAssignment({ userEmail: "a@fpt.edu.vn", allowedClassIds: ["10A1"] });
+    const assignmentB = makeAssignment({ userEmail: "b@fpt.edu.vn", allowedClassIds: ["10A1"] });
+    for (const assignment of [assignmentA, assignmentB]) {
+      const result = checkRoundEligibility({
+        round,
+        assignment,
+        classId: "10A1",
+        grade: "10",
+        now: OPEN_NOW,
+      });
+      expect(result.ok).toBe(true);
+    }
+  });
+});
+
+describe("eligibilityMessage", () => {
+  it("chèn tên lớp vào thông báo OUT_OF_ASSIGNMENT_SCOPE", () => {
+    expect(eligibilityMessage("OUT_OF_ASSIGNMENT_SCOPE", "10A5")).toBe(
+      "Bạn không được phân công chấm lớp 10A5 trong Đợt chấm này.",
+    );
   });
 });

@@ -12,6 +12,9 @@ import {
   getScoringRound,
   assignJudgeToRound,
   removeJudgeFromRound,
+  replaceAssignmentsForUser,
+  setClassAssignees,
+  getClasses,
   getUsers,
   appendAuditLog,
 } from "@/lib/google/sheets";
@@ -296,6 +299,82 @@ export async function removeJudgeAction(
     });
 
     revalidatePath(`/admin/scoring-rounds/${roundId}`);
+    revalidatePath("/judge");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+const replaceUserAssignmentsSchema = z.object({
+  roundId: z.string().min(1),
+  userEmail: z.string().email(),
+  classIds: z.array(z.string()).default([]),
+});
+
+/** Tab "Theo người" — THAY THẾ toàn bộ danh sách lớp của 1 người trong 1
+ * Round (nút "Lưu phân công"). Ghi AuditLog before/after đúng mục 20. */
+export async function replaceUserAssignmentsAction(raw: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    if (!canManageRounds(user)) return fail("Bạn không có quyền phân công người chấm.");
+    const parsed = replaceUserAssignmentsSchema.safeParse(raw);
+    if (!parsed.success) return fail("Dữ liệu không hợp lệ.");
+    const { roundId, userEmail, classIds } = parsed.data;
+
+    const { before, after } = await replaceAssignmentsForUser(roundId, userEmail, classIds, user.email);
+
+    await appendAuditLog({
+      userEmail: user.email,
+      userName: user.name,
+      action: "REPLACE_USER_ASSIGNMENTS",
+      entityType: "ScoringRoundAssignment",
+      entityId: roundId,
+      details: { userEmail, before, after },
+    });
+
+    revalidatePath(`/admin/scoring-rounds/${roundId}`);
+    revalidatePath("/admin/scoring-rounds");
+    revalidatePath("/judge");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+const setClassAssigneesSchema = z.object({
+  roundId: z.string().min(1),
+  classId: z.string().min(1),
+  userEmails: z.array(z.string().email()).default([]),
+});
+
+/** Tab "Theo lớp" — đặt lại toàn bộ danh sách người phụ trách 1 lớp trong 1
+ * Round cùng lúc (mục 11 — 1 lớp có thể có nhiều người). */
+export async function setClassAssigneesAction(raw: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    if (!canManageRounds(user)) return fail("Bạn không có quyền phân công người chấm.");
+    const parsed = setClassAssigneesSchema.safeParse(raw);
+    if (!parsed.success) return fail("Dữ liệu không hợp lệ.");
+    const { roundId, classId, userEmails } = parsed.data;
+
+    const classes = await getClasses({ activeOnly: true });
+    const klass = classes.find((c) => c.classId === classId);
+    if (!klass) return fail("Lớp không tồn tại.");
+
+    await setClassAssignees(roundId, classId, klass.grade, userEmails, user.email);
+
+    await appendAuditLog({
+      userEmail: user.email,
+      userName: user.name,
+      action: "BULK_ASSIGN_CLASSES",
+      entityType: "ScoringRoundAssignment",
+      entityId: roundId,
+      details: { classId, userEmails },
+    });
+
+    revalidatePath(`/admin/scoring-rounds/${roundId}`);
+    revalidatePath("/admin/scoring-rounds");
     revalidatePath("/judge");
     return { ok: true, data: undefined };
   } catch (e) {

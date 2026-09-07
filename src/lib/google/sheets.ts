@@ -3,12 +3,15 @@ import { randomUUID } from "crypto";
 import {
   getAllRows,
   appendRow,
+  appendRows,
   updateRowWhere,
+  batchUpdateRows,
   type SheetRow,
 } from "./sheetRepo";
 import { SHEET_NAMES, DEFAULT_SETTINGS } from "./schema";
 import { nowIso } from "@/lib/timezone/timezone";
 import { primaryRole } from "@/lib/auth/permissions";
+import { isClassInAssignmentScope, checkRoundEligibility, eligibilityMessage } from "@/lib/rounds/eligibility";
 import type {
   AppUser,
   AppSettings,
@@ -1172,4 +1175,236 @@ export async function removeJudgeFromRound(
       row.roundId === roundId && row.userEmail?.trim().toLowerCase() === normalized,
     { active: "FALSE" },
   );
+}
+
+// ---------- Phân công theo LỚP (xem docs/CLASS_ASSIGNMENT_UPGRADE.md) ----------
+//
+// Vẫn lưu 1 dòng/(roundId,userEmail) với mảng allowedClassIds — KHÔNG đổi
+// cột. Các hàm dưới đây là lớp thao tác mức "lớp" trên nền dữ liệu đó, để
+// UI/Server Action không phải tự merge mảng JSON thủ công ở nhiều nơi.
+
+/** Phạm vi lớp thô (chưa giao với phạm vi Round) mà 1 người được phân công
+ * riêng trong 1 Round — dùng để hiển thị checkbox đã tick ở UI Admin. */
+export async function getAssignedClassesForUser(
+  roundId: string,
+  userEmail: string,
+): Promise<{ allowedClassIds: string[]; allowedGradeIds: Grade[] }> {
+  const assignment = await isUserAssignedToRound(roundId, userEmail);
+  if (!assignment) return { allowedClassIds: [], allowedGradeIds: [] };
+  return {
+    allowedClassIds: assignment.allowedClassIds,
+    allowedGradeIds: assignment.allowedGradeIds,
+  };
+}
+
+/** Toàn bộ email người được phân công đúng 1 lớp cụ thể trong 1 Round (có thể
+ * nhiều người cùng phụ trách 1 lớp — mục 11 yêu cầu). */
+export async function getAssignedUsersForClass(
+  roundId: string,
+  classId: string,
+  grade: Grade,
+): Promise<string[]> {
+  const assignments = await getRoundAssignments(roundId);
+  return assignments
+    .filter((a) => isClassInAssignmentScope(a, classId, grade))
+    .map((a) => a.userEmail);
+}
+
+async function upsertAssignmentRow(
+  roundId: string,
+  userEmail: string,
+  nextAllowedClassIds: string[],
+  assignedBy: string,
+): Promise<void> {
+  const normalized = userEmail.trim().toLowerCase();
+  const now = nowIso();
+  const updated = await updateRowWhere(
+    SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS,
+    (row) => row.roundId === roundId && row.userEmail?.trim().toLowerCase() === normalized,
+    {
+      active: "TRUE",
+      allowedClassIdsJson: JSON.stringify(nextAllowedClassIds),
+      assignedBy: assignedBy.trim().toLowerCase(),
+      assignedAt: now,
+    },
+  );
+  if (updated) return;
+
+  await appendRow(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, {
+    assignmentId: randomUUID(),
+    roundId,
+    userEmail: normalized,
+    allowedGradeIdsJson: "[]",
+    allowedClassIdsJson: JSON.stringify(nextAllowedClassIds),
+    active: "TRUE",
+    assignedBy: assignedBy.trim().toLowerCase(),
+    assignedAt: now,
+  });
+}
+
+/** Thêm 1 lớp vào phạm vi của 1 người (giữ nguyên các lớp đã có trước đó). */
+export async function assignUserToClass(
+  roundId: string,
+  userEmail: string,
+  classId: string,
+  assignedBy: string,
+): Promise<void> {
+  const current = await getAssignedClassesForUser(roundId, userEmail);
+  if (current.allowedClassIds.includes(classId)) return;
+  await upsertAssignmentRow(roundId, userEmail, [...current.allowedClassIds, classId], assignedBy);
+}
+
+/** Bỏ 1 lớp khỏi phạm vi của 1 người — KHÔNG xoá dòng assignment, KHÔNG đụng
+ * tới Score đã submit (mục 22: bỏ phân công không xoá kết quả đã chấm). */
+export async function removeUserFromClass(
+  roundId: string,
+  userEmail: string,
+  classId: string,
+  assignedBy: string,
+): Promise<void> {
+  const current = await getAssignedClassesForUser(roundId, userEmail);
+  if (!current.allowedClassIds.includes(classId)) return;
+  await upsertAssignmentRow(
+    roundId,
+    userEmail,
+    current.allowedClassIds.filter((id) => id !== classId),
+    assignedBy,
+  );
+}
+
+/** Hợp (union) thêm nhiều lớp vào phạm vi của 1 người trong 1 lần ghi. */
+export async function bulkAssignUserToClasses(
+  roundId: string,
+  userEmail: string,
+  classIds: string[],
+  assignedBy: string,
+): Promise<void> {
+  const current = await getAssignedClassesForUser(roundId, userEmail);
+  const next = Array.from(new Set([...current.allowedClassIds, ...classIds]));
+  await upsertAssignmentRow(roundId, userEmail, next, assignedBy);
+}
+
+/** THAY THẾ toàn bộ phạm vi lớp của 1 người (tab "Theo người" — Lưu phân
+ * công). Trả về {before, after} để ghi AuditLog đúng mục 20. */
+export async function replaceAssignmentsForUser(
+  roundId: string,
+  userEmail: string,
+  classIds: string[],
+  assignedBy: string,
+): Promise<{ before: string[]; after: string[] }> {
+  const current = await getAssignedClassesForUser(roundId, userEmail);
+  const before = current.allowedClassIds;
+  const after = Array.from(new Set(classIds));
+  await upsertAssignmentRow(roundId, userEmail, after, assignedBy);
+  return { before, after };
+}
+
+/** Tab "Theo lớp": đặt lại toàn bộ tập người phụ trách 1 lớp cùng lúc — tính
+ * diff rồi ghi hàng loạt bằng `batchUpdateRows` (1 lần đọc + tối đa 1 lệnh
+ * batchUpdate cho các dòng đã tồn tại, cộng 1 lệnh append cho người chưa từng
+ * có assignment trong Round) thay vì gọi API riêng cho từng người. */
+export async function setClassAssignees(
+  roundId: string,
+  classId: string,
+  grade: Grade,
+  userEmails: string[],
+  assignedBy: string,
+): Promise<void> {
+  const normalizedTargets = new Set(userEmails.map((e) => e.trim().toLowerCase()));
+  const allAssignments = await getRoundAssignments(roundId);
+  const byUser = new Map(allAssignments.map((a) => [a.userEmail, a]));
+  const now = nowIso();
+  const normalizedAssignedBy = assignedBy.trim().toLowerCase();
+
+  const specs: { matcher: (row: SheetRow) => boolean; updates: Partial<SheetRow> }[] = [];
+  const newRows: SheetRow[] = [];
+
+  for (const email of normalizedTargets) {
+    const existing = byUser.get(email);
+    if (existing) {
+      if (isClassInAssignmentScope(existing, classId, grade)) continue; // đã có quyền qua khối/lớp khác, không cần đổi
+      const nextClassIds = Array.from(new Set([...existing.allowedClassIds, classId]));
+      specs.push({
+        matcher: (row) => row.assignmentId === existing.assignmentId,
+        updates: {
+          active: "TRUE",
+          allowedClassIdsJson: JSON.stringify(nextClassIds),
+          assignedBy: normalizedAssignedBy,
+          assignedAt: now,
+        },
+      });
+    } else {
+      newRows.push({
+        assignmentId: randomUUID(),
+        roundId,
+        userEmail: email,
+        allowedGradeIdsJson: "[]",
+        allowedClassIdsJson: JSON.stringify([classId]),
+        active: "TRUE",
+        assignedBy: normalizedAssignedBy,
+        assignedAt: now,
+      });
+    }
+  }
+
+  // Những người đang có lớp này nhưng KHÔNG còn trong danh sách mới -> gỡ.
+  for (const a of allAssignments) {
+    if (normalizedTargets.has(a.userEmail)) continue;
+    if (!a.allowedClassIds.includes(classId)) continue; // chỉ gỡ khi quyền đến từ allowedClassIds trực tiếp (không gỡ quyền theo cả khối qua thao tác 1 lớp)
+    const nextClassIds = a.allowedClassIds.filter((id) => id !== classId);
+    specs.push({
+      matcher: (row) => row.assignmentId === a.assignmentId,
+      updates: { allowedClassIdsJson: JSON.stringify(nextClassIds), assignedAt: now },
+    });
+  }
+
+  if (specs.length > 0) {
+    await batchUpdateRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, specs);
+  }
+  if (newRows.length > 0) {
+    await appendRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, newRows);
+  }
+}
+
+export type CanScoreCode =
+  | "OK"
+  | "ROUND_NOT_FOUND"
+  | "CLASS_NOT_FOUND"
+  | "ROUND_DRAFT"
+  | "ROUND_SCHEDULED"
+  | "ROUND_LOCKED"
+  | "ROUND_CANCELLED"
+  | "NOT_ASSIGNED"
+  | "OUT_OF_ROUND_SCOPE"
+  | "OUT_OF_ASSIGNMENT_SCOPE";
+
+export interface CanScoreResult {
+  ok: boolean;
+  code: CanScoreCode;
+  message: string;
+}
+
+/** Nguồn sự thật DUY NHẤT cho câu hỏi "user X có được chấm lớp Y trong Round
+ * Z không" — dùng trong Server Action submit (mục 9). Không tin bất kỳ giá
+ * trị nào từ client ngoài 3 tham số định danh này. */
+export async function canScoreClassInRound(
+  userEmail: string,
+  roundId: string,
+  classId: string,
+): Promise<CanScoreResult> {
+  const round = await getScoringRound(roundId);
+  if (!round) return { ok: false, code: "ROUND_NOT_FOUND", message: "Không tìm thấy Đợt chấm." };
+
+  const classes = await getClasses({ activeOnly: true });
+  const klass = classes.find((c) => c.classId === classId);
+  if (!klass) {
+    return { ok: false, code: "CLASS_NOT_FOUND", message: "Lớp không tồn tại hoặc đã ngừng chấm." };
+  }
+
+  const assignment = await isUserAssignedToRound(roundId, userEmail);
+  const result = checkRoundEligibility({ round, assignment, classId, grade: klass.grade });
+  if (!result.ok) {
+    return { ok: false, code: result.code, message: eligibilityMessage(result.code, klass.className) };
+  }
+  return { ok: true, code: "OK", message: "" };
 }

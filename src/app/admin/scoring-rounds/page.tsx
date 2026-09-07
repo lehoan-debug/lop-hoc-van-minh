@@ -30,23 +30,19 @@ export default async function AdminScoringRoundsPage() {
       const classesInRoundScope = classes.filter((c) =>
         isClassInRoundScope(round, c.classId, c.grade),
       );
-      // Số lớp "cần chấm" thực tế = hợp của phạm vi từng người được phân công
-      // (nếu không ai bị thu hẹp thêm, bằng đúng phạm vi Round).
-      const classesToScore =
-        assignments.length === 0
-          ? classesInRoundScope
-          : classesInRoundScope.filter((c) =>
-              assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)),
-            );
+      const assignedClassCount = classesInRoundScope.filter((c) =>
+        assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)),
+      ).length;
 
       const doneClassIds = new Set(scores.map((s) => s.classId));
-      const doneCount = classesToScore.filter((c) => doneClassIds.has(c.classId)).length;
+      const doneCount = classesInRoundScope.filter((c) => doneClassIds.has(c.classId)).length;
 
       return {
         round,
         effectiveStatus: getEffectiveRoundStatus(round, now),
         assignedJudgeCount: assignments.length,
-        totalClasses: classesToScore.length,
+        totalClasses: classesInRoundScope.length,
+        assignedClassCount,
         doneCount,
       };
     }),

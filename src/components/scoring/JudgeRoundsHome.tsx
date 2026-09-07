@@ -145,7 +145,7 @@ function RoundCard({ item }: { item: RoundWithProgress }) {
 
       <div className="mt-3 flex items-center justify-between">
         <p className={cn("text-sm", complete ? "text-success" : "text-foreground")}>
-          Đã chấm: {doneCount}/{assignedClassesCount}
+          Đã chấm: {doneCount}/{assignedClassesCount} lớp được phân công
         </p>
         {msLeft > 0 && (
           <p className="flex items-center gap-1 text-sm font-medium text-warning">

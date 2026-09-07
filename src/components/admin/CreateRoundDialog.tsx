@@ -24,6 +24,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { todayVN } from "@/lib/timezone/timezone";
+import { useRouter } from "next/navigation";
 import { createRoundAction, assignJudgeAction, assignAllJudgesAction } from "@/lib/actions/roundActions";
 import type { AppUser, ClassConfig, Grade, Session_ } from "@/types";
 
@@ -37,6 +38,7 @@ export function CreateRoundDialog({
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -98,8 +100,13 @@ export function CreateRoundDialog({
         }
       }
 
-      toast({ variant: "success", title: "Đã tạo đợt chấm." });
+      toast({
+        variant: "success",
+        title: "Đã tạo đợt chấm.",
+        description: "Người chấm chưa có quyền chấm lớp nào — vào trang chi tiết để phân công theo lớp.",
+      });
       onClose();
+      router.push(`/admin/scoring-rounds/${roundId}`);
     });
   };
 

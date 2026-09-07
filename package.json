@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "init-sheet": "tsx --conditions=react-server scripts/init-google-sheet.ts",
-    "migrate-v2": "tsx --conditions=react-server scripts/migrate-v2.ts"
+    "migrate-v2": "tsx --conditions=react-server scripts/migrate-v2.ts",
+    "migrate-round-assignments-v2": "tsx --conditions=react-server scripts/migrate-round-assignments-v2.ts"
   },
   "dependencies": {
     "next": "16.3.4",

@@ -8,15 +8,12 @@ import {
   Lock,
   Unlock,
   RefreshCw,
-  UserPlus,
-  X,
   Loader2,
   Clock,
-  Search,
   FileSpreadsheet,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -30,12 +27,8 @@ import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveRoundStatus, ROUND_STATUS_LABEL, msUntilRoundEnds } from "@/lib/rounds/roundStatus";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
-import {
-  lockRoundAction,
-  reopenRoundAction,
-  assignJudgeAction,
-  removeJudgeAction,
-} from "@/lib/actions/roundActions";
+import { lockRoundAction, reopenRoundAction } from "@/lib/actions/roundActions";
+import { AssignmentPanel } from "@/components/admin/AssignmentPanel";
 import type {
   AppUser,
   ClassConfig,
@@ -53,7 +46,7 @@ interface ClassRow {
 
 export function RoundDetailClient({
   round,
-  classes: _classes,
+  classes,
   classRows,
   assignments,
   judges,
@@ -64,14 +57,13 @@ export function RoundDetailClient({
   assignments: ScoringRoundAssignment[];
   judges: AppUser[];
 }) {
-  void _classes;
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [now, setNow] = React.useState(() => new Date());
   const [gradeFilter, setGradeFilter] = React.useState<Grade | "ALL">("ALL");
   const [statusFilter, setStatusFilter] = React.useState<"ALL" | "DONE" | "PENDING">("ALL");
-  const [addingJudge, setAddingJudge] = React.useState(false);
+  const [unassignedOnly, setUnassignedOnly] = React.useState(false);
   const [reopenConfirm, setReopenConfirm] = React.useState(false);
 
   const effectiveStatus = getEffectiveRoundStatus(round, now);
@@ -94,10 +86,14 @@ export function RoundDetailClient({
 
   const judgeByEmail = new Map(judges.map((j) => [j.email, j]));
 
+  const assignedCount = classRows.filter((r) => r.assignedJudgeEmails.length > 0).length;
+  const unassignedCount = totalCount - assignedCount;
+
   const filteredRows = classRows.filter((r) => {
     if (gradeFilter !== "ALL" && r.classInfo.grade !== gradeFilter) return false;
     if (statusFilter === "DONE" && !r.score) return false;
     if (statusFilter === "PENDING" && r.score) return false;
+    if (unassignedOnly && r.assignedJudgeEmails.length > 0) return false;
     return true;
   });
 
@@ -119,18 +115,6 @@ export function RoundDetailClient({
       if (result.ok) {
         toast({ variant: "success", title: "Đã mở lại đợt chấm." });
         setReopenConfirm(false);
-        router.refresh();
-      } else {
-        toast({ variant: "error", title: result.error });
-      }
-    });
-  };
-
-  const handleRemoveJudge = (email: string) => {
-    startTransition(async () => {
-      const result = await removeJudgeAction(round.roundId, email);
-      if (result.ok) {
-        toast({ variant: "success", title: "Đã gỡ người chấm." });
         router.refresh();
       } else {
         toast({ variant: "error", title: result.error });
@@ -189,9 +173,14 @@ export function RoundDetailClient({
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatBox label="Đã chấm" value={`${doneCount}/${totalCount}`} />
         <StatBox label="Tiến độ" value={`${pct}%`} />
+        <StatBox
+          label="Phân công"
+          value={`${assignedCount}/${totalCount} lớp`}
+          tone={unassignedCount > 0 ? "warning" : undefined}
+        />
         <StatBox label="Người chấm" value={String(assignments.length)} />
         <StatBox
           label="Thời gian còn lại"
@@ -200,37 +189,30 @@ export function RoundDetailClient({
         />
       </div>
 
-      <div className="mb-6 rounded-[var(--radius)] border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">Người được phân công</h2>
-          <Button size="sm" variant="outline" onClick={() => setAddingJudge(true)}>
-            <UserPlus className="h-3.5 w-3.5" />
-            Thêm
-          </Button>
+      {unassignedCount > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-[var(--radius)] border border-warning/30 bg-warning/5 px-4 py-3 text-sm">
+          <span className="flex items-center gap-2 text-warning">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Còn {unassignedCount} lớp chưa được phân công người chấm.
+          </span>
+          <button
+            onClick={() => setUnassignedOnly(true)}
+            className="shrink-0 font-medium text-warning underline"
+          >
+            Xem {unassignedCount} lớp chưa phân công
+          </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {assignments.map((a) => {
-            const j = judgeByEmail.get(a.userEmail);
-            return (
-              <span
-                key={a.assignmentId}
-                className="flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-sm"
-              >
-                {j?.name || a.userEmail}
-                <button
-                  onClick={() => handleRemoveJudge(a.userEmail)}
-                  disabled={isPending}
-                  className="rounded-full p-0.5 hover:bg-background"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            );
-          })}
-          {assignments.length === 0 && (
-            <p className="text-sm text-muted-foreground">Chưa phân công người chấm nào.</p>
-          )}
-        </div>
+      )}
+
+      <div className="mb-6">
+        <AssignmentPanel
+          roundId={round.roundId}
+          classes={classes}
+          judges={judges}
+          assignments={assignments}
+          isRoundOpen={effectiveStatus === "OPEN"}
+          onChanged={() => router.refresh()}
+        />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -253,13 +235,23 @@ export function RoundDetailClient({
           <option value="DONE">Đã chấm</option>
           <option value="PENDING">Chưa chấm</option>
         </select>
+        <button
+          onClick={() => setUnassignedOnly((v) => !v)}
+          className={cn(
+            "h-9 rounded-[var(--radius)] border px-3 text-sm font-medium",
+            unassignedOnly ? "border-warning bg-warning/10 text-warning" : "border-input bg-background",
+          )}
+        >
+          Chỉ hiện lớp chưa phân công
+        </button>
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="border-b border-border bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Lớp</th>
+              <th className="px-3 py-2">Người được phân công</th>
               <th className="px-3 py-2">Trạng thái</th>
               <th className="px-3 py-2">Người chấm</th>
               <th className="px-3 py-2">Thời gian</th>
@@ -270,6 +262,20 @@ export function RoundDetailClient({
             {filteredRows.map((row) => (
               <tr key={row.classInfo.classId} className="border-b border-border last:border-0">
                 <td className="px-3 py-2 font-medium">{row.classInfo.className}</td>
+                <td className="px-3 py-2">
+                  {row.assignedJudgeEmails.length > 0 ? (
+                    <span className="text-xs">
+                      {row.assignedJudgeEmails
+                        .map((email) => judgeByEmail.get(email)?.name || email)
+                        .join(", ")}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                      <AlertTriangle className="h-3 w-3" />
+                      CHƯA PHÂN CÔNG
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   {row.score ? (
                     <span className="text-success">✓ Đã chấm</span>
@@ -286,7 +292,7 @@ export function RoundDetailClient({
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                   Không có lớp phù hợp bộ lọc.
                 </td>
               </tr>
@@ -294,18 +300,6 @@ export function RoundDetailClient({
           </tbody>
         </table>
       </div>
-
-      {addingJudge && (
-        <AddJudgeDialog
-          roundId={round.roundId}
-          judges={judges}
-          assignedEmails={assignments.map((a) => a.userEmail)}
-          onClose={() => {
-            setAddingJudge(false);
-            router.refresh();
-          }}
-        />
-      )}
 
       {reopenConfirm && (
         <ReopenConfirmDialog
@@ -322,15 +316,27 @@ function StatBox({
   label,
   value,
   icon,
+  tone,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
+  tone?: "warning";
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-border bg-card p-3">
+    <div
+      className={cn(
+        "rounded-[var(--radius)] border p-3",
+        tone === "warning" ? "border-warning/30 bg-warning/5" : "border-border bg-card",
+      )}
+    >
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 flex items-center gap-1.5 text-lg font-bold">
+      <p
+        className={cn(
+          "mt-1 flex items-center gap-1.5 text-lg font-bold",
+          tone === "warning" && "text-warning",
+        )}
+      >
         {icon}
         {value}
       </p>
@@ -343,75 +349,6 @@ function formatCountdown(ms: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function AddJudgeDialog({
-  roundId,
-  judges,
-  assignedEmails,
-  onClose,
-}: {
-  roundId: string;
-  judges: AppUser[];
-  assignedEmails: string[];
-  onClose: () => void;
-}) {
-  const { toast } = useToast();
-  const [isPending, startTransition] = useTransition();
-  const [query, setQuery] = React.useState("");
-  const assignedSet = new Set(assignedEmails);
-  const candidates = judges.filter(
-    (j) =>
-      !assignedSet.has(j.email) &&
-      (j.name.toLowerCase().includes(query.toLowerCase()) ||
-        j.email.toLowerCase().includes(query.toLowerCase())),
-  );
-
-  const handleAdd = (email: string) => {
-    startTransition(async () => {
-      const result = await assignJudgeAction({ roundId, userEmail: email });
-      if (result.ok) {
-        toast({ variant: "success", title: "Đã thêm người chấm." });
-      } else {
-        toast({ variant: "error", title: result.error });
-      }
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Thêm người chấm</DialogTitle>
-        </DialogHeader>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên/email" className="pl-8" />
-        </div>
-        <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-          {candidates.map((j) => (
-            <button
-              key={j.email}
-              disabled={isPending}
-              onClick={() => handleAdd(j.email)}
-              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
-            >
-              <span>{j.name || j.email}</span>
-              <span className="text-xs text-muted-foreground">{j.email}</span>
-            </button>
-          ))}
-          {candidates.length === 0 && (
-            <p className="px-2 py-2 text-sm text-muted-foreground">Không còn ai để thêm.</p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Đóng
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 function ReopenConfirmDialog({

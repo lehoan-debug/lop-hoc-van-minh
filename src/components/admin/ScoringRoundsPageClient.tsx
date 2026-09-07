@@ -18,6 +18,7 @@ export interface RoundListItem {
   effectiveStatus: EffectiveRoundStatus;
   assignedJudgeCount: number;
   totalClasses: number;
+  assignedClassCount: number;
   doneCount: number;
 }
 
@@ -72,7 +73,8 @@ export function ScoringRoundsPageClient({
 function RoundCard({ item }: { item: RoundListItem }) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
-  const { round, effectiveStatus, assignedJudgeCount, totalClasses, doneCount } = item;
+  const { round, effectiveStatus, assignedJudgeCount, totalClasses, assignedClassCount, doneCount } = item;
+  const unassignedCount = totalClasses - assignedClassCount;
 
   const handleLock = () => {
     startTransition(async () => {
@@ -103,6 +105,13 @@ function RoundCard({ item }: { item: RoundListItem }) {
       <div className="mt-3 space-y-1 text-sm">
         <p>
           Người chấm: <strong>{assignedJudgeCount}</strong>
+        </p>
+        <p>
+          Phân công:{" "}
+          <strong className={unassignedCount > 0 ? "text-warning" : undefined}>
+            {assignedClassCount}
+          </strong>
+          /{totalClasses} lớp
         </p>
         <p>
           Đã chấm: <strong>{doneCount}</strong>/{totalClasses} lớp

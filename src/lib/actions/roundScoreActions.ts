@@ -5,15 +5,15 @@ import { requireUser, UnauthorizedError, ForbiddenError } from "@/lib/auth/sessi
 import { canAccessScoring } from "@/lib/auth/permissions";
 import {
   getScoringRound,
-  isUserAssignedToRound,
+  canScoreClassInRound,
   checkDuplicateRoundScore,
   createRoundScore,
   createAdjustment,
   getClasses,
   getCriteria,
   appendAuditLog,
+  type CanScoreCode,
 } from "@/lib/google/sheets";
-import { checkRoundEligibility, type RoundEligibilityCode } from "@/lib/rounds/eligibility";
 import { criterionAppliesToGrade } from "@/lib/google/sheets";
 import { buildCriteriaSnapshot, isAllCriteriaAnswered, totalsFromSnapshot } from "@/lib/scoring/roundScore";
 import { todayVN, formatDateTimeVN } from "@/lib/timezone/timezone";
@@ -28,7 +28,7 @@ export interface SubmitRoundScoreOk {
 export interface SubmitRoundScoreErr {
   ok: false;
   error: string;
-  code: RoundEligibilityCode | "DUPLICATE" | "INVALID" | "FORBIDDEN" | "UNKNOWN";
+  code: CanScoreCode | "DUPLICATE" | "INVALID" | "FORBIDDEN" | "UNKNOWN";
 }
 
 // Giới hạn điểm cộng/trừ nhập trực tiếp lúc chấm — dùng chung ngưỡng với
@@ -51,17 +51,6 @@ const submitRoundScoreSchema = z.object({
   penaltyPoints: z.number().int().min(0).max(ADJUSTMENT_POINTS_MAX).optional().default(0),
   penaltyNote: z.string().max(1000).optional().default(""),
 });
-
-const ELIGIBILITY_MESSAGE: Record<RoundEligibilityCode, string> = {
-  OK: "",
-  ROUND_DRAFT: "Đợt chấm chưa được mở.",
-  ROUND_SCHEDULED: "Đợt chấm chưa bắt đầu.",
-  ROUND_LOCKED: "Đợt chấm đã kết thúc. Kết quả chưa được lưu. Vui lòng liên hệ Quản trị viên nếu cần xử lý.",
-  ROUND_CANCELLED: "Đợt chấm đã bị huỷ.",
-  NOT_ASSIGNED: "Bạn chưa được phân công vào đợt chấm này.",
-  OUT_OF_ROUND_SCOPE: "Lớp này không thuộc phạm vi của đợt chấm.",
-  OUT_OF_ASSIGNMENT_SCOPE: "Bạn không được phân công chấm lớp này.",
-};
 
 export async function submitRoundScoreAction(
   raw: unknown,
@@ -89,19 +78,12 @@ export async function submitRoundScoreAction(
       return { ok: false, error: "Lớp không tồn tại hoặc đã ngừng chấm.", code: "INVALID" };
     }
 
-    const assignment = await isUserAssignedToRound(input.roundId, user.email);
-
-    // Kiểm tra tại thời điểm SUBMIT (không phải lúc mở form) — chống trường
-    // hợp mở form lúc đợt còn mở nhưng bấm Submit sau khi đã hết giờ.
-    const eligibility = checkRoundEligibility({
-      round,
-      assignment,
-      classId: klass.classId,
-      grade: klass.grade,
-      now: new Date(),
-    });
+    // Nguồn sự thật DUY NHẤT cho quyền chấm — kiểm tra lại tại thời điểm
+    // SUBMIT (không phải lúc mở form), gồm cả việc user có được phân công
+    // CHÍNH XÁC lớp này hay không (mục 9: không chỉ filter UI).
+    const eligibility = await canScoreClassInRound(user.email, input.roundId, klass.classId);
     if (!eligibility.ok) {
-      return { ok: false, error: ELIGIBILITY_MESSAGE[eligibility.code], code: eligibility.code };
+      return { ok: false, error: eligibility.message, code: eligibility.code };
     }
 
     const dup = await checkDuplicateRoundScore({ roundId: input.roundId, classId: input.classId });

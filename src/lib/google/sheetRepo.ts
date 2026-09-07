@@ -146,6 +146,55 @@ export async function updateRowWhere(
   return false;
 }
 
+export interface RowUpdateSpec {
+  matcher: (row: SheetRow) => boolean;
+  updates: Partial<SheetRow>;
+}
+
+/**
+ * Cập nhật NHIỀU dòng độc lập trong 1 lần đọc + 1 lệnh `values.batchUpdate`
+ * duy nhất — dùng khi 1 thao tác của người dùng làm thay đổi nhiều dòng cùng
+ * lúc (vd. lưu phân công nhiều Giám khảo cho 1 lớp), để tránh gọi API round-
+ * trip riêng cho từng dòng/checkbox. Mỗi dòng chỉ khớp với `spec` đầu tiên
+ * thoả `matcher`. Trả về số dòng thực sự đã cập nhật.
+ */
+export async function batchUpdateRows(
+  sheetName: SheetName,
+  specs: RowUpdateSpec[],
+): Promise<number> {
+  if (specs.length === 0) return 0;
+  const headers = HEADERS[sheetName];
+  const lastCol = colLetter(headers.length - 1);
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: `${sheetName}!A2:${lastCol}`,
+  });
+  const values = res.data.values ?? [];
+
+  const data: { range: string; values: string[][] }[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const rowArr = values[i] as string[];
+    const rowObj = rowArrayToObject(headers, rowArr);
+    const spec = specs.find((s) => s.matcher(rowObj));
+    if (!spec) continue;
+    const merged = { ...rowObj, ...spec.updates } as SheetRow;
+    const rowNumber = i + 2;
+    data.push({
+      range: `${sheetName}!A${rowNumber}:${lastCol}${rowNumber}`,
+      values: [objectToRowArray(headers, merged)],
+    });
+  }
+  if (data.length === 0) return 0;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: getSpreadsheetId(),
+    requestBody: { valueInputOption: "RAW", data },
+  });
+  invalidateCache(sheetName);
+  return data.length;
+}
+
 export async function ensureSheetWithHeader(sheetName: SheetName): Promise<void> {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
