@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { submitRoundScoreAction } from "@/lib/actions/roundScoreActions";
 import { RoundCriterionCard } from "@/components/scoring/RoundCriterionCard";
+import { AdjustmentCard } from "@/components/scoring/AdjustmentCard";
 import type {
   ClassConfig,
   CriterionConfig,
@@ -29,9 +30,30 @@ import type {
 
 const SESSION_LABEL: Record<Session_, string> = { MORNING: "Sáng", AFTERNOON: "Chiều" };
 
+// BottomNav (z-40) đứng cố định ở bottom:0 trên mobile — thanh CTA của màn
+// chấm điểm PHẢI đứng NGAY TRÊN nó (bottom = chiều cao nav + safe-area), nếu
+// không sẽ bị BottomNav đè hoàn toàn (bug từng gặp: nút "Xem lại & Xác nhận"
+// mất tích trên điện thoại thật). Trên desktop (sm+) BottomNav ẩn nên CTA trở
+// lại bám đáy màn hình bình thường.
+const FIXED_FOOTER_CLASS =
+  "fixed inset-x-0 bottom-[calc(var(--bottom-nav-height)_+_env(safe-area-inset-bottom))] z-30 border-t border-border bg-card p-4 sm:sticky sm:bottom-0";
+// Nội dung cuộn phải chừa đủ chỗ bên dưới để không bị thanh CTA phía trên che
+// (chiều cao CTA ước lượng ~84px + nav + safe-area + khoảng hở 24px).
+const SCROLL_CONTENT_CLASS =
+  "pb-[calc(var(--bottom-nav-height)_+_env(safe-area-inset-bottom)_+_84px_+_24px)]";
+
 type Answers = Record<string, "PASS" | "FAIL">;
 type Notes = Record<string, string>;
 type Phase = "scoring" | "review" | "done";
+
+interface DraftShape {
+  answers: Answers;
+  notes: Notes;
+  bonusPoints?: number;
+  bonusNote?: string;
+  penaltyPoints?: number;
+  penaltyNote?: string;
+}
 
 interface RoundScoringScreenProps {
   round: ScoringRound;
@@ -82,23 +104,27 @@ export function RoundScoringScreen({
 
   const [answers, setAnswers] = React.useState<Answers>({});
   const [notes, setNotes] = React.useState<Notes>({});
+  const [bonusPoints, setBonusPoints] = React.useState(0);
+  const [bonusNote, setBonusNote] = React.useState("");
+  const [penaltyPoints, setPenaltyPoints] = React.useState(0);
+  const [penaltyNote, setPenaltyNote] = React.useState("");
   const [phase, setPhase] = React.useState<Phase>("scoring");
   const [submittedTotals, setSubmittedTotals] = React.useState<{
     totalScore: number;
     maxPossibleScore: number;
+    finalScore: number;
   } | null>(null);
-  const [draftPrompt, setDraftPrompt] = React.useState<{
-    answers: Answers;
-    notes: Notes;
-  } | null>(null);
+  const [draftPrompt, setDraftPrompt] = React.useState<DraftShape | null>(null);
 
   React.useEffect(() => {
     if (existingScore) return;
     try {
       const raw = localStorage.getItem(key);
       if (raw) {
-        const parsed = JSON.parse(raw) as { answers: Answers; notes: Notes };
-        if (parsed.answers && Object.keys(parsed.answers).length > 0) {
+        const parsed = JSON.parse(raw) as DraftShape;
+        const hasAnswers = parsed.answers && Object.keys(parsed.answers).length > 0;
+        const hasAdjustments = (parsed.bonusPoints ?? 0) > 0 || (parsed.penaltyPoints ?? 0) > 0;
+        if (hasAnswers || hasAdjustments) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setDraftPrompt(parsed);
         }
@@ -110,9 +136,9 @@ export function RoundScoringScreen({
   }, []);
 
   const saveDraft = React.useCallback(
-    (nextAnswers: Answers, nextNotes: Notes) => {
+    (draft: DraftShape) => {
       try {
-        localStorage.setItem(key, JSON.stringify({ answers: nextAnswers, notes: nextNotes }));
+        localStorage.setItem(key, JSON.stringify(draft));
       } catch {
         // ignore
       }
@@ -131,7 +157,7 @@ export function RoundScoringScreen({
   const setAnswer = (criterionId: string, value: "PASS" | "FAIL") => {
     setAnswers((prev) => {
       const next = { ...prev, [criterionId]: value };
-      saveDraft(next, notes);
+      saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
       return next;
     });
   };
@@ -139,9 +165,26 @@ export function RoundScoringScreen({
   const setNote = (criterionId: string, note: string) => {
     setNotes((prev) => {
       const next = { ...prev, [criterionId]: note };
-      saveDraft(answers, next);
+      saveDraft({ answers, notes: next, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
       return next;
     });
+  };
+
+  const handleBonusChange = (value: number) => {
+    setBonusPoints(value);
+    saveDraft({ answers, notes, bonusPoints: value, bonusNote, penaltyPoints, penaltyNote });
+  };
+  const handleBonusNoteChange = (value: string) => {
+    setBonusNote(value);
+    saveDraft({ answers, notes, bonusPoints, bonusNote: value, penaltyPoints, penaltyNote });
+  };
+  const handlePenaltyChange = (value: number) => {
+    setPenaltyPoints(value);
+    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints: value, penaltyNote });
+  };
+  const handlePenaltyNoteChange = (value: string) => {
+    setPenaltyNote(value);
+    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote: value });
   };
 
   const handleQuickScore = () => {
@@ -150,7 +193,7 @@ export function RoundScoringScreen({
       next[c.criterionId] = "PASS";
     });
     setAnswers(next);
-    saveDraft(next, notes);
+    saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
     toast({
       variant: "info",
       title: `Đã đánh dấu ${criteria.length} tiêu chí là Đạt.`,
@@ -161,11 +204,12 @@ export function RoundScoringScreen({
   const answeredCount = criteria.filter((c) => answers[c.criterionId] !== undefined).length;
   const isComplete = answeredCount === criteria.length && criteria.length > 0;
 
-  const totalScore = criteria.reduce((sum, c) => {
+  const criteriaScore = criteria.reduce((sum, c) => {
     const a = answers[c.criterionId];
     return sum + (a === "PASS" ? c.maxScore : 0);
   }, 0);
   const maxPossibleScore = criteria.reduce((sum, c) => sum + c.maxScore, 0);
+  const finalScore = criteriaScore + bonusPoints - penaltyPoints;
 
   const handleSubmit = () => {
     if (!isComplete || isPending) return;
@@ -178,12 +222,20 @@ export function RoundScoringScreen({
             classId: classInfo.classId,
             answers,
             notes,
+            bonusPoints,
+            bonusNote,
+            penaltyPoints,
+            penaltyNote,
           }),
           SUBMIT_TIMEOUT_MS,
         );
         if (result.ok) {
           clearDraft();
-          setSubmittedTotals({ totalScore: result.totalScore, maxPossibleScore: result.maxPossibleScore });
+          setSubmittedTotals({
+            totalScore: result.totalScore,
+            maxPossibleScore: result.maxPossibleScore,
+            finalScore: result.totalScore + bonusPoints - penaltyPoints,
+          });
           setPhase("done");
           toast({ variant: "success", title: `Đã lưu kết quả ${classInfo.className}.` });
         } else {
@@ -216,6 +268,10 @@ export function RoundScoringScreen({
             onClick={() => {
               setAnswers(draftPrompt.answers);
               setNotes(draftPrompt.notes);
+              setBonusPoints(draftPrompt.bonusPoints ?? 0);
+              setBonusNote(draftPrompt.bonusNote ?? "");
+              setPenaltyPoints(draftPrompt.penaltyPoints ?? 0);
+              setPenaltyNote(draftPrompt.penaltyNote ?? "");
               setDraftPrompt(null);
             }}
           >
@@ -264,8 +320,16 @@ export function RoundScoringScreen({
         <CheckCircle2 className="mb-3 h-14 w-14 text-success" />
         <p className="text-lg font-semibold">Đã lưu kết quả {classInfo.className}.</p>
         <p className="mt-1 text-muted-foreground">
-          Điểm: {submittedTotals.totalScore}/{submittedTotals.maxPossibleScore}
+          Điểm tiêu chí: {submittedTotals.totalScore}/{submittedTotals.maxPossibleScore}
         </p>
+        {(bonusPoints > 0 || penaltyPoints > 0) && (
+          <p className="text-sm text-muted-foreground">
+            {bonusPoints > 0 && <span className="text-success">Cộng {bonusPoints}</span>}
+            {bonusPoints > 0 && penaltyPoints > 0 && " · "}
+            {penaltyPoints > 0 && <span className="text-warning">Trừ {penaltyPoints}</span>}
+          </p>
+        )}
+        <p className="mt-1 text-2xl font-bold">Tổng điểm: {submittedTotals.finalScore}</p>
         <Button
           size="lg"
           className="mt-6 w-full max-w-xs"
@@ -295,7 +359,7 @@ export function RoundScoringScreen({
 
   if (phase === "review") {
     return (
-      <div className="mx-auto max-w-lg pb-28">
+      <div className={cn("mx-auto max-w-lg", SCROLL_CONTENT_CLASS)}>
         <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3">
           <button
             onClick={() => setPhase("scoring")}
@@ -306,7 +370,7 @@ export function RoundScoringScreen({
           </button>
           <p className="mt-2 text-lg font-bold">Xem lại kết quả</p>
           <p className="text-sm text-muted-foreground">
-            {classInfo.className} · {round.title}
+            {classInfo.className} · {round.title} · {formatDateVN(new Date())}
           </p>
         </header>
 
@@ -334,13 +398,39 @@ export function RoundScoringScreen({
           })}
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card p-4 sm:sticky">
+        <div className="px-4">
+          <div className="rounded-[var(--radius)] border border-border bg-card p-4 text-sm">
+            <p className="mb-2 font-semibold">Kết quả tạm tính</p>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Điểm tiêu chí</span>
+              <span className="font-medium">
+                {criteriaScore} / {maxPossibleScore}
+              </span>
+            </div>
+            {bonusPoints > 0 && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-muted-foreground">Điểm cộng</span>
+                <span className="font-medium text-success">+{bonusPoints}</span>
+              </div>
+            )}
+            {penaltyPoints > 0 && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-muted-foreground">Điểm trừ</span>
+                <span className="font-medium text-warning">-{penaltyPoints}</span>
+              </div>
+            )}
+            <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+              <span className="font-semibold">TỔNG ĐIỂM</span>
+              <span className="text-lg font-bold">{finalScore}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={FIXED_FOOTER_CLASS}>
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="flex-1">
               <p className="text-xs text-muted-foreground">TỔNG ĐIỂM</p>
-              <p className="text-xl font-bold">
-                {totalScore}/{maxPossibleScore}
-              </p>
+              <p className="text-xl font-bold">{finalScore}</p>
             </div>
             <Button size="lg" onClick={handleSubmit} disabled={isPending} className="flex-1">
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -353,7 +443,7 @@ export function RoundScoringScreen({
   }
 
   return (
-    <div className="mx-auto max-w-lg pb-28">
+    <div className={cn("mx-auto max-w-lg", SCROLL_CONTENT_CLASS)}>
       <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3">
         <BackBar roundId={round.roundId} />
         <div className="mt-2 flex items-center justify-between">
@@ -408,15 +498,52 @@ export function RoundScoringScreen({
             </p>
           )}
         </div>
+
+        <div className="mt-4 space-y-3">
+          <AdjustmentCard
+            kind="BONUS"
+            points={bonusPoints}
+            note={bonusNote}
+            onPointsChange={handleBonusChange}
+            onNoteChange={handleBonusNoteChange}
+          />
+          <AdjustmentCard
+            kind="PENALTY"
+            points={penaltyPoints}
+            note={penaltyNote}
+            onPointsChange={handlePenaltyChange}
+            onNoteChange={handlePenaltyNoteChange}
+          />
+        </div>
+
+        <div className="mt-4 rounded-[var(--radius)] border border-border bg-card p-4 text-sm">
+          <p className="mb-2 font-semibold">Kết quả tạm tính</p>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-muted-foreground">Điểm tiêu chí</span>
+            <span className="font-medium">
+              {criteriaScore} / {maxPossibleScore}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-muted-foreground">Điểm cộng</span>
+            <span className="font-medium text-success">+{bonusPoints}</span>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-muted-foreground">Điểm trừ</span>
+            <span className="font-medium text-warning">-{penaltyPoints}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+            <span className="font-semibold">TỔNG ĐIỂM</span>
+            <span className="text-lg font-bold">{finalScore}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card p-4 sm:sticky">
+      <div className={FIXED_FOOTER_CLASS}>
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="flex-1">
             <p className="text-xs text-muted-foreground">TỔNG ĐIỂM</p>
-            <p className="text-xl font-bold">
-              {totalScore}/{maxPossibleScore}
-            </p>
+            <p className="text-xl font-bold">{finalScore}</p>
           </div>
           <Button
             size="lg"

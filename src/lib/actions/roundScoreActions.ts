@@ -8,6 +8,7 @@ import {
   isUserAssignedToRound,
   checkDuplicateRoundScore,
   createRoundScore,
+  createAdjustment,
   getClasses,
   getCriteria,
   appendAuditLog,
@@ -23,17 +24,32 @@ export interface SubmitRoundScoreOk {
   totalScore: number;
   maxPossibleScore: number;
 }
+
 export interface SubmitRoundScoreErr {
   ok: false;
   error: string;
   code: RoundEligibilityCode | "DUPLICATE" | "INVALID" | "FORBIDDEN" | "UNKNOWN";
 }
 
+// Giới hạn điểm cộng/trừ nhập trực tiếp lúc chấm — dùng chung ngưỡng với
+// Adjustments do Admin tạo tay (xem createAdjustmentSchema trong
+// src/lib/validation/schemas.ts) để tránh hai quy tắc khác nhau cho cùng
+// một loại dữ liệu (BONUS/PENALTY).
+const ADJUSTMENT_POINTS_MAX = 10;
+
 const submitRoundScoreSchema = z.object({
   roundId: z.string().min(1),
   classId: z.string().min(1),
   answers: z.record(z.string(), z.enum(["PASS", "FAIL"])),
   notes: z.record(z.string(), z.string()).optional().default({}),
+  // Điểm cộng/trừ nhập ngay khi chấm — ghi thành Adjustment (BONUS/PENALTY)
+  // riêng biệt, KHÔNG lưu vào Scores, để tránh hai nguồn dữ liệu mâu thuẫn
+  // (xem docs/V2_UPGRADE_ANALYSIS.md). Server luôn tự tính lại, không tin số
+  // liệu client gửi lên cho bất kỳ mục đích nào khác ngoài việc tạo Adjustment.
+  bonusPoints: z.number().int().min(0).max(ADJUSTMENT_POINTS_MAX).optional().default(0),
+  bonusNote: z.string().max(1000).optional().default(""),
+  penaltyPoints: z.number().int().min(0).max(ADJUSTMENT_POINTS_MAX).optional().default(0),
+  penaltyNote: z.string().max(1000).optional().default(""),
 });
 
 const ELIGIBILITY_MESSAGE: Record<RoundEligibilityCode, string> = {
@@ -127,6 +143,51 @@ export async function submitRoundScoreAction(
       entityId: record.submissionId,
       details: { roundId: input.roundId, classId: klass.classId, totalScore, maxPossibleScore },
     });
+
+    // Điểm cộng/trừ nhập kèm lượt chấm -> ghi vào Adjustments (nguồn dữ liệu
+    // chuẩn cho BONUS/PENALTY, dùng chung với /admin/adjustments) — không
+    // lưu trùng vào Scores. points=0 thì không tạo dòng nào (không có gì để
+    // ghi nhận).
+    if (input.bonusPoints > 0) {
+      const bonus = await createAdjustment({
+        date: todayVN(),
+        classId: klass.classId,
+        className: klass.className,
+        type: "BONUS",
+        points: input.bonusPoints,
+        description: input.bonusNote.trim() || "Ghi nhận khi chấm điểm Lớp học Văn minh.",
+        recordedByEmail: user.email,
+        recordedByName: user.name,
+      });
+      await appendAuditLog({
+        userEmail: user.email,
+        userName: user.name,
+        action: "ADD_BONUS",
+        entityType: "Adjustment",
+        entityId: bonus.adjustmentId,
+        details: { classId: klass.classId, points: input.bonusPoints, submissionId: record.submissionId },
+      });
+    }
+    if (input.penaltyPoints > 0) {
+      const penalty = await createAdjustment({
+        date: todayVN(),
+        classId: klass.classId,
+        className: klass.className,
+        type: "PENALTY",
+        points: input.penaltyPoints,
+        description: input.penaltyNote.trim() || "Ghi nhận khi chấm điểm Lớp học Văn minh.",
+        recordedByEmail: user.email,
+        recordedByName: user.name,
+      });
+      await appendAuditLog({
+        userEmail: user.email,
+        userName: user.name,
+        action: "ADD_PENALTY",
+        entityType: "Adjustment",
+        entityId: penalty.adjustmentId,
+        details: { classId: klass.classId, points: input.penaltyPoints, submissionId: record.submissionId },
+      });
+    }
 
     return { ok: true, submissionId: record.submissionId, totalScore, maxPossibleScore };
   } catch (e) {

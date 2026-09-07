@@ -19,6 +19,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   themeColor: "#1a73c7",
+  // Bắt buộc để env(safe-area-inset-bottom) trả về giá trị thật (không phải
+  // luôn = 0) trên iOS Safari — cần cho .safe-bottom và các thanh CTA cố
+  // định phía trên BottomNav không bị thanh cử chỉ/tai thỏ che.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

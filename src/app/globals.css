@@ -36,6 +36,12 @@
     --ring: 213 90% 45%;
 
     --radius: 12px;
+
+    /* Chiều cao thực đo của BottomNav (icon + label + padding), KHÔNG gồm
+       safe-area-inset-bottom — mọi vùng nội dung/thanh CTA cố định phía trên
+       BottomNav phải cộng thêm env(safe-area-inset-bottom) riêng khi dùng
+       biến này để tránh bị che trên các máy có thanh cử chỉ/tai thỏ. */
+    --bottom-nav-height: 64px;
   }
 }
 
