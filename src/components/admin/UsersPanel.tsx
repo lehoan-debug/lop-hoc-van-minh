@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Plus, Pencil, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Pencil, Loader2, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { updateUserAction } from "@/lib/actions/adminActions";
+import { ImportUsersDialog } from "@/components/admin/ImportUsersDialog";
 import { canManageAdminRoles } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import type { AppUser, ClassConfig, Grade, Role, UserRole } from "@/types";
@@ -39,13 +41,19 @@ export function UsersPanel({
   classes: ClassConfig[];
   currentUserRole: Role;
 }) {
+  const router = useRouter();
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<AppUser | null>(null);
+  const [importing, setImporting] = React.useState(false);
   const canManageAdmins = canManageAdminRoles({ roles: [currentUserRole] });
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={() => setImporting(true)}>
+          <FileSpreadsheet className="h-4 w-4" />
+          Nhập từ Excel
+        </Button>
         <Button onClick={() => setCreating(true)}>
           <Plus className="h-4 w-4" />
           Thêm tài khoản
@@ -114,6 +122,15 @@ export function UsersPanel({
           onClose={() => {
             setCreating(false);
             setEditing(null);
+          }}
+        />
+      )}
+
+      {importing && (
+        <ImportUsersDialog
+          onClose={() => {
+            setImporting(false);
+            router.refresh();
           }}
         />
       )}

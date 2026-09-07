@@ -152,6 +152,77 @@ export async function updateUser(input: {
   return true;
 }
 
+export interface BulkImportUserRow {
+  email: string;
+  name: string;
+  roles: UserRole[];
+  homeroomClassIds: string[];
+}
+
+export interface BulkImportUserOutcome {
+  createdEmails: string[];
+  updatedEmails: string[];
+}
+
+/** Nhập hàng loạt (từ file Excel) — vai trò/lớp chủ nhiệm được HỢP (union)
+ * vào tài khoản đã có, KHÔNG thay thế (an toàn khi import nhiều lần). Tài
+ * khoản đã tồn tại giữ nguyên `active`/`allowedGrades` hiện có (import không
+ * được phép âm thầm khoá/mở lại tài khoản); tài khoản mới mặc định
+ * active=true, allowedGrades="ALL". Ghi theo lô giống `bulkImportAssignments`
+ * — 1 lần đọc + tối đa 1 lệnh batchUpdate + 1 lệnh append. */
+export async function bulkUpsertUsers(rows: BulkImportUserRow[]): Promise<BulkImportUserOutcome> {
+  const outcome: BulkImportUserOutcome = { createdEmails: [], updatedEmails: [] };
+  if (rows.length === 0) return outcome;
+
+  const existingUsers = await getUsers();
+  const byEmail = new Map(existingUsers.map((u) => [u.email, u]));
+  const now = nowIso();
+
+  const specs: { matcher: (row: SheetRow) => boolean; updates: Partial<SheetRow> }[] = [];
+  const newRows: SheetRow[] = [];
+
+  for (const input of rows) {
+    const email = input.email.trim().toLowerCase();
+    const existing = byEmail.get(email);
+    if (existing) {
+      const nextRoles = Array.from(new Set([...existing.roles, ...input.roles]));
+      const nextHomeroom = Array.from(new Set([...existing.homeroomClassIds, ...input.homeroomClassIds]));
+      specs.push({
+        matcher: (row) => row.email?.trim().toLowerCase() === email,
+        updates: {
+          name: input.name || existing.name,
+          role: primaryRole(nextRoles),
+          rolesJson: JSON.stringify(nextRoles),
+          homeroomClassIdsJson: JSON.stringify(nextHomeroom),
+          updatedAt: now,
+        },
+      });
+      outcome.updatedEmails.push(email);
+    } else {
+      newRows.push({
+        email,
+        name: input.name,
+        role: primaryRole(input.roles),
+        rolesJson: JSON.stringify(input.roles),
+        active: "TRUE",
+        allowedGrades: "ALL",
+        homeroomClassIdsJson: JSON.stringify(input.homeroomClassIds),
+        createdAt: now,
+        updatedAt: now,
+      });
+      outcome.createdEmails.push(email);
+    }
+  }
+
+  if (specs.length > 0) {
+    await batchUpdateRows(SHEET_NAMES.USERS, specs);
+  }
+  if (newRows.length > 0) {
+    await appendRows(SHEET_NAMES.USERS, newRows);
+  }
+  return outcome;
+}
+
 // ---------- Classes ----------
 
 function rowToClass(row: SheetRow): ClassConfig {
