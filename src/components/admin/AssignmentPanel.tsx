@@ -2,7 +2,21 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Users, School, Search, CheckSquare, Square, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import {
+  Users,
+  School,
+  Search,
+  CheckSquare,
+  Square,
+  Trash2,
+  Loader2,
+  AlertTriangle,
+  FileSpreadsheet,
+  Upload,
+  Download,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -30,7 +44,7 @@ export function AssignmentPanel({
   isRoundOpen: boolean;
   onChanged: () => void;
 }) {
-  const [tab, setTab] = React.useState<"person" | "class">("person");
+  const [tab, setTab] = React.useState<"person" | "class" | "excel">("person");
 
   return (
     <div className="rounded-[var(--radius)] border border-border bg-card p-4">
@@ -63,10 +77,20 @@ export function AssignmentPanel({
             <School className="h-3.5 w-3.5" />
             Theo lớp
           </button>
+          <button
+            onClick={() => setTab("excel")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-[calc(var(--radius)-2px)] px-3 py-1.5",
+              tab === "excel" ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+            )}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Nhập Excel
+          </button>
         </div>
       </div>
 
-      {tab === "person" ? (
+      {tab === "person" && (
         <ByPersonTab
           roundId={roundId}
           classes={classes}
@@ -75,7 +99,8 @@ export function AssignmentPanel({
           isRoundOpen={isRoundOpen}
           onChanged={onChanged}
         />
-      ) : (
+      )}
+      {tab === "class" && (
         <ByClassTab
           roundId={roundId}
           classes={classes}
@@ -85,6 +110,7 @@ export function AssignmentPanel({
           onChanged={onChanged}
         />
       )}
+      {tab === "excel" && <ImportExcelTab roundId={roundId} onChanged={onChanged} />}
     </div>
   );
 }
@@ -484,6 +510,144 @@ function ByClassTab({
         <span className="text-xs text-muted-foreground">Đã chọn {checked.size} người</span>
         <SaveButton isRoundOpen={isRoundOpen} isPending={isPending} onSave={handleSave} label="Lưu" />
       </div>
+    </div>
+  );
+}
+
+// ---------- Tab: Nhập Excel ----------
+
+interface ImportError {
+  rowIndex: number;
+  personRaw: string;
+  classRaw: string;
+  reason: string;
+}
+
+interface ImportResult {
+  totalRows: number;
+  importedCount: number;
+  errorCount: number;
+  errors: ImportError[];
+}
+
+function ImportExcelTab({ roundId, onChanged }: { roundId: string; onChanged: () => void }) {
+  const { toast } = useToast();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [result, setResult] = React.useState<ImportResult | null>(null);
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setIsUploading(true);
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/admin/scoring-rounds/${roundId}/import-assignments`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await res.json()) as ImportResult & { error?: string };
+      if (!res.ok) {
+        toast({ variant: "error", title: data.error ?? "Không thể nhập dữ liệu." });
+        return;
+      }
+      setResult(data);
+      if (data.importedCount > 0) {
+        toast({ variant: "success", title: `Đã nhập ${data.importedCount} dòng phân công.` });
+        onChanged();
+      }
+      if (data.errorCount > 0) {
+        toast({
+          variant: data.importedCount > 0 ? "info" : "error",
+          title: `${data.errorCount} dòng lỗi, xem chi tiết bên dưới.`,
+        });
+      }
+    } catch {
+      toast({ variant: "error", title: "Lỗi kết nối. Vui lòng thử lại." });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="mb-3 text-sm text-muted-foreground">
+        File Excel (.xlsx) có 2 cột, bắt đầu từ dòng 2 (dòng 1 là tiêu đề): cột A = Người chấm
+        (email hoặc tên), cột B = Tên lớp. Phân công mới sẽ được CỘNG THÊM vào phân công hiện có,
+        không xoá gì cả.
+      </p>
+
+      <a
+        href="/api/admin/scoring-rounds/import-template"
+        className="mb-3 inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+      >
+        <Download className="h-3.5 w-3.5" />
+        Tải file mẫu
+      </a>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setResult(null);
+          }}
+          className="text-sm"
+        />
+        <Button size="sm" onClick={handleUpload} disabled={!file || isUploading}>
+          {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          Tải lên &amp; Nhập
+        </Button>
+      </div>
+
+      {result && (
+        <div className="mt-4 space-y-2">
+          <div className="flex flex-wrap gap-3 text-sm">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              Tổng {result.totalRows} dòng dữ liệu
+            </span>
+            <span className="flex items-center gap-1.5 text-success">
+              <CheckCircle2 className="h-4 w-4" />
+              {result.importedCount} dòng nhập thành công
+            </span>
+            {result.errorCount > 0 && (
+              <span className="flex items-center gap-1.5 text-destructive">
+                <XCircle className="h-4 w-4" />
+                {result.errorCount} dòng lỗi
+              </span>
+            )}
+          </div>
+
+          {result.errors.length > 0 && (
+            <div className="max-h-56 overflow-y-auto rounded-[var(--radius)] border border-destructive/30">
+              <table className="w-full text-xs">
+                <thead className="bg-destructive/5 text-left text-destructive">
+                  <tr>
+                    <th className="px-2 py-1.5">Dòng</th>
+                    <th className="px-2 py-1.5">Người chấm</th>
+                    <th className="px-2 py-1.5">Lớp</th>
+                    <th className="px-2 py-1.5">Lỗi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.errors.map((e, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-2 py-1.5">{e.rowIndex}</td>
+                      <td className="px-2 py-1.5">{e.personRaw || "—"}</td>
+                      <td className="px-2 py-1.5">{e.classRaw || "—"}</td>
+                      <td className="px-2 py-1.5">{e.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

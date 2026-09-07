@@ -115,6 +115,15 @@ export async function updateRoundAction(raw: unknown): Promise<ActionResult> {
       updates.endsAt = zonedTimeToUtc(date, `${endTime}:00`).toISOString();
     }
 
+    // Không hạn chế sửa giờ theo trạng thái Đợt chấm (kể cả đang OPEN) — dời
+    // endsAt là cách chính thức để "mở thêm giờ" (xem roundStatus.ts). Chỉ
+    // chặn nếu kết quả cuối cùng vô lý (kết thúc không sau bắt đầu).
+    const effectiveStartsAt = updates.startsAt ?? existing.startsAt;
+    const effectiveEndsAt = updates.endsAt ?? existing.endsAt;
+    if (new Date(effectiveEndsAt).getTime() <= new Date(effectiveStartsAt).getTime()) {
+      return fail("Giờ kết thúc phải sau giờ bắt đầu.");
+    }
+
     const ok = await updateScoringRound(roundId, updates);
     if (!ok) return fail("Không thể cập nhật Đợt chấm.");
 

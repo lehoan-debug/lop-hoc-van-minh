@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
-import { canAccessScoring } from "@/lib/auth/permissions";
+import { canAccessScoring, canManageRounds } from "@/lib/auth/permissions";
 import {
   getRoundAssignmentsForUser,
   getScoringRounds,
@@ -54,5 +54,5 @@ export default async function JudgePage() {
 
   items.sort((a, b) => a.round.startsAt.localeCompare(b.round.startsAt));
 
-  return <JudgeRoundsHome userName={user.name} items={items} />;
+  return <JudgeRoundsHome userName={user.name} items={items} canManageRounds={canManageRounds(user)} />;
 }

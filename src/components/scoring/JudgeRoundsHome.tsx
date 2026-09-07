@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { GraduationCap, ChevronRight, Clock, Lock } from "lucide-react";
+import { GraduationCap, ChevronRight, Clock, Lock, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { ROUND_STATUS_LABEL, msUntilRoundEnds } from "@/lib/rounds/roundStatus";
@@ -20,9 +20,11 @@ const SESSION_LABEL: Record<Session_, string> = { MORNING: "Sáng", AFTERNOON: "
 export function JudgeRoundsHome({
   userName,
   items,
+  canManageRounds,
 }: {
   userName: string;
   items: RoundWithProgress[];
+  canManageRounds: boolean;
 }) {
   const open = items.filter((i) => i.effectiveStatus === "OPEN");
   const scheduled = items.filter((i) => i.effectiveStatus === "SCHEDULED");
@@ -100,9 +102,18 @@ export function JudgeRoundsHome({
         )}
 
         {items.length === 0 && (
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Bạn chưa được phân công vào Đợt chấm nào.
-          </p>
+          <div className="mt-8 text-center text-sm text-muted-foreground">
+            <p>Bạn chưa được phân công vào Đợt chấm nào.</p>
+            {canManageRounds && (
+              <Link
+                href="/admin/scoring-rounds"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Vào Đợt chấm để tự phân công cho mình
+              </Link>
+            )}
+          </div>
         )}
       </main>
     </div>

@@ -12,6 +12,7 @@ import {
   Clock,
   FileSpreadsheet,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +30,7 @@ import { getEffectiveRoundStatus, ROUND_STATUS_LABEL, msUntilRoundEnds } from "@
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
 import { lockRoundAction, reopenRoundAction } from "@/lib/actions/roundActions";
 import { AssignmentPanel } from "@/components/admin/AssignmentPanel";
+import { EditRoundDialog } from "@/components/admin/EditRoundDialog";
 import type {
   AppUser,
   ClassConfig,
@@ -65,6 +67,7 @@ export function RoundDetailClient({
   const [statusFilter, setStatusFilter] = React.useState<"ALL" | "DONE" | "PENDING">("ALL");
   const [unassignedOnly, setUnassignedOnly] = React.useState(false);
   const [reopenConfirm, setReopenConfirm] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
 
   const effectiveStatus = getEffectiveRoundStatus(round, now);
 
@@ -150,6 +153,10 @@ export function RoundDetailClient({
           </span>
           <Button variant="outline" size="sm" onClick={() => router.refresh()}>
             <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Sửa
           </Button>
           <a
             href={`/api/admin/export/xlsx?roundId=${round.roundId}`}
@@ -306,6 +313,18 @@ export function RoundDetailClient({
           onCancel={() => setReopenConfirm(false)}
           onConfirm={handleReopen}
           isPending={isPending}
+        />
+      )}
+
+      {editing && (
+        <EditRoundDialog
+          round={round}
+          effectiveStatus={effectiveStatus}
+          classes={classes}
+          onClose={() => {
+            setEditing(false);
+            router.refresh();
+          }}
         />
       )}
     </div>

@@ -1378,6 +1378,63 @@ export type CanScoreCode =
   | "OUT_OF_ROUND_SCOPE"
   | "OUT_OF_ASSIGNMENT_SCOPE";
 
+/** Nhập hàng loạt (từ file Excel) — HỢP (union) thêm lớp vào phạm vi từng
+ * người, KHÔNG thay thế những gì đã có (an toàn khi import nhiều lần/nhiều
+ * file bổ sung cho nhau). `classIdsByUser` đã được gộp theo email (xem
+ * `groupMatchesByUser` trong `src/lib/scoring/importAssignments.ts`). Ghi
+ * theo lô: 1 lần đọc + tối đa 1 lệnh batchUpdate cho người đã có dòng, cộng 1
+ * lệnh append cho người chưa từng có assignment trong Round. */
+export async function bulkImportAssignments(
+  roundId: string,
+  classIdsByUser: Map<string, string[]>,
+  assignedBy: string,
+): Promise<void> {
+  if (classIdsByUser.size === 0) return;
+
+  const allAssignments = await getRoundAssignments(roundId);
+  const byUser = new Map(allAssignments.map((a) => [a.userEmail, a]));
+  const now = nowIso();
+  const normalizedAssignedBy = assignedBy.trim().toLowerCase();
+
+  const specs: { matcher: (row: SheetRow) => boolean; updates: Partial<SheetRow> }[] = [];
+  const newRows: SheetRow[] = [];
+
+  for (const [emailRaw, classIds] of classIdsByUser) {
+    const email = emailRaw.trim().toLowerCase();
+    const existing = byUser.get(email);
+    if (existing) {
+      const nextClassIds = Array.from(new Set([...existing.allowedClassIds, ...classIds]));
+      specs.push({
+        matcher: (row) => row.assignmentId === existing.assignmentId,
+        updates: {
+          active: "TRUE",
+          allowedClassIdsJson: JSON.stringify(nextClassIds),
+          assignedBy: normalizedAssignedBy,
+          assignedAt: now,
+        },
+      });
+    } else {
+      newRows.push({
+        assignmentId: randomUUID(),
+        roundId,
+        userEmail: email,
+        allowedGradeIdsJson: "[]",
+        allowedClassIdsJson: JSON.stringify(Array.from(new Set(classIds))),
+        active: "TRUE",
+        assignedBy: normalizedAssignedBy,
+        assignedAt: now,
+      });
+    }
+  }
+
+  if (specs.length > 0) {
+    await batchUpdateRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, specs);
+  }
+  if (newRows.length > 0) {
+    await appendRows(SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS, newRows);
+  }
+}
+
 export interface CanScoreResult {
   ok: boolean;
   code: CanScoreCode;
