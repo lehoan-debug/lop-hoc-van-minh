@@ -16,6 +16,7 @@ import {
   Download,
   CheckCircle2,
   XCircle,
+  Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,9 @@ import { cn } from "@/lib/utils";
 import {
   replaceUserAssignmentsAction,
   setClassAssigneesAction,
+  randomAssignAction,
 } from "@/lib/actions/roundActions";
+import { isClassInAssignmentScope } from "@/lib/rounds/eligibility";
 import type { AppUser, ClassConfig, Grade, ScoringRoundAssignment } from "@/types";
 
 const GRADES: Grade[] = ["10", "11", "12"];
@@ -44,7 +47,7 @@ export function AssignmentPanel({
   isRoundOpen: boolean;
   onChanged: () => void;
 }) {
-  const [tab, setTab] = React.useState<"person" | "class" | "excel">("person");
+  const [tab, setTab] = React.useState<"person" | "class" | "random" | "excel">("person");
 
   return (
     <div className="rounded-[var(--radius)] border border-border bg-card p-4">
@@ -76,6 +79,16 @@ export function AssignmentPanel({
           >
             <School className="h-3.5 w-3.5" />
             Theo lớp
+          </button>
+          <button
+            onClick={() => setTab("random")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-[calc(var(--radius)-2px)] px-3 py-1.5",
+              tab === "random" ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Shuffle className="h-3.5 w-3.5" />
+            Ngẫu nhiên
           </button>
           <button
             onClick={() => setTab("excel")}
@@ -110,6 +123,16 @@ export function AssignmentPanel({
           onChanged={onChanged}
         />
       )}
+      {tab === "random" && (
+        <RandomAssignTab
+          roundId={roundId}
+          classes={classes}
+          judges={judges}
+          assignments={assignments}
+          isRoundOpen={isRoundOpen}
+          onChanged={onChanged}
+        />
+      )}
       {tab === "excel" && <ImportExcelTab roundId={roundId} onChanged={onChanged} />}
     </div>
   );
@@ -122,11 +145,13 @@ function SaveButton({
   isPending,
   onSave,
   label,
+  disabled = false,
 }: {
   isRoundOpen: boolean;
   isPending: boolean;
   onSave: () => void;
   label: string;
+  disabled?: boolean;
 }) {
   const [confirming, setConfirming] = React.useState(false);
 
@@ -153,7 +178,11 @@ function SaveButton({
   }
 
   return (
-    <Button size="sm" onClick={() => (isRoundOpen ? setConfirming(true) : onSave())} disabled={isPending}>
+    <Button
+      size="sm"
+      onClick={() => (isRoundOpen ? setConfirming(true) : onSave())}
+      disabled={isPending || disabled}
+    >
       {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
       {label}
     </Button>
@@ -509,6 +538,167 @@ function ByClassTab({
       <div className="mt-3 flex items-center justify-end gap-2">
         <span className="text-xs text-muted-foreground">Đã chọn {checked.size} người</span>
         <SaveButton isRoundOpen={isRoundOpen} isPending={isPending} onSave={handleSave} label="Lưu" />
+      </div>
+    </div>
+  );
+}
+
+// ---------- Tab: Ngẫu nhiên ----------
+
+function RandomAssignTab({
+  roundId,
+  classes,
+  judges,
+  assignments,
+  isRoundOpen,
+  onChanged,
+}: {
+  roundId: string;
+  classes: ClassConfig[];
+  judges: AppUser[];
+  assignments: ScoringRoundAssignment[];
+  isRoundOpen: boolean;
+  onChanged: () => void;
+}) {
+  const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
+  const [gradeFilter, setGradeFilter] = React.useState<Grade | "ALL">("ALL");
+  const [query, setQuery] = React.useState("");
+  const [selectedJudges, setSelectedJudges] = React.useState<Set<string>>(new Set());
+
+  const classesInFilter =
+    gradeFilter === "ALL" ? classes : classes.filter((c) => c.grade === gradeFilter);
+  const unassignedClasses = classesInFilter.filter(
+    (c) => !assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)),
+  );
+
+  const filteredJudges = judges.filter(
+    (j) =>
+      j.name.toLowerCase().includes(query.toLowerCase()) ||
+      j.email.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  const toggleJudge = (email: string) => {
+    setSelectedJudges((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
+
+  const selectedCount = selectedJudges.size;
+  const perJudgeMin = selectedCount > 0 ? Math.floor(unassignedClasses.length / selectedCount) : 0;
+  const remainder = selectedCount > 0 ? unassignedClasses.length % selectedCount : 0;
+
+  const handleRun = () => {
+    if (selectedCount === 0 || unassignedClasses.length === 0) return;
+    startTransition(async () => {
+      const result = await randomAssignAction({
+        roundId,
+        judgeEmails: Array.from(selectedJudges),
+        gradeFilter: gradeFilter === "ALL" ? undefined : gradeFilter,
+      });
+      if (result.ok) {
+        toast({
+          variant: "success",
+          title: `Đã phân công ngẫu nhiên ${result.data.assignedClassCount} lớp cho ${selectedCount} người.`,
+        });
+        setSelectedJudges(new Set());
+        onChanged();
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
+
+  return (
+    <div>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Chia ngẫu nhiên và đều các lớp <strong>CHƯA có ai phụ trách</strong> cho những người chấm
+        được chọn bên dưới — không đụng tới các lớp đã có người phân công.
+      </p>
+
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={() => setGradeFilter("ALL")}
+          className={cn(
+            "rounded-md border px-2.5 py-1 text-xs font-medium",
+            gradeFilter === "ALL" ? "border-primary bg-primary/10 text-primary" : "border-border",
+          )}
+        >
+          Tất cả khối
+        </button>
+        {GRADES.map((g) => (
+          <button
+            key={g}
+            onClick={() => setGradeFilter(g)}
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-xs font-medium",
+              gradeFilter === g ? "border-primary bg-primary/10 text-primary" : "border-border",
+            )}
+          >
+            Khối {g}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tìm người chấm theo tên/email"
+          className="pl-8"
+        />
+      </div>
+
+      <div className="max-h-56 space-y-1 overflow-y-auto rounded-[var(--radius)] border border-border p-2">
+        {filteredJudges.map((j) => {
+          const isChecked = selectedJudges.has(j.email);
+          return (
+            <button
+              key={j.email}
+              type="button"
+              onClick={() => toggleJudge(j.email)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
+                isChecked ? "bg-primary/10 text-primary" : "hover:bg-accent",
+              )}
+            >
+              <span>{j.name || j.email}</span>
+              <span className="text-xs text-muted-foreground">{j.email}</span>
+            </button>
+          );
+        })}
+        {filteredJudges.length === 0 && (
+          <p className="px-2 py-2 text-sm text-muted-foreground">Không tìm thấy.</p>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-md bg-primary/5 px-3 py-2 text-xs text-primary">
+        {unassignedClasses.length === 0 ? (
+          <span>Không còn lớp nào chưa phân công trong phạm vi đã chọn.</span>
+        ) : selectedCount === 0 ? (
+          <span>{unassignedClasses.length} lớp chưa phân công — chọn người chấm để chia.</span>
+        ) : (
+          <span>
+            {unassignedClasses.length} lớp chưa phân công sẽ chia ngẫu nhiên cho {selectedCount}{" "}
+            người, mỗi người khoảng {perJudgeMin}
+            {remainder > 0 ? `–${perJudgeMin + 1}` : ""} lớp.
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <span className="text-xs text-muted-foreground">Đã chọn {selectedCount} người</span>
+        <SaveButton
+          isRoundOpen={isRoundOpen}
+          isPending={isPending}
+          onSave={handleRun}
+          label="Phân công ngẫu nhiên"
+          disabled={selectedCount === 0 || unassignedClasses.length === 0}
+        />
       </div>
     </div>
   );
