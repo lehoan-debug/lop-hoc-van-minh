@@ -454,6 +454,7 @@ function rowToScore(row: SheetRow): ScoreRecord {
     answersJson: row.answersJson ?? "{}",
     totalScore: row.totalScore ? Number(row.totalScore) : null,
     maxPossibleScore: row.maxPossibleScore ? Number(row.maxPossibleScore) : null,
+    generalNote: row.generalNote ?? "",
   };
 }
 
@@ -567,6 +568,7 @@ export async function createScore(input: CreateScoreInput): Promise<ScoreRecord>
     answersJson: "{}",
     totalScore: null,
     maxPossibleScore: null,
+    generalNote: "",
   };
 
   const row: SheetRow = {
@@ -615,6 +617,8 @@ export interface CreateRoundScoreInput {
   /** Bản chụp tiêu chí TẠI THỜI ĐIỂM chấm — không tính lại theo Criteria
    * hiện tại khi Criteria đổi sau này. Xem docs/V2_UPGRADE_ANALYSIS.md mục 3.3. */
   criteriaSnapshot: CriterionSnapshotItem[];
+  /** Nhận xét chung của Giám khảo cho cả lượt chấm — hiện dạng tag cho GVCN. */
+  generalNote?: string;
 }
 
 /** Ghi kết quả chấm V2 (gắn với 1 Đợt chấm cụ thể). Không đụng tới
@@ -667,6 +671,7 @@ export async function createRoundScore(
     answersJson: JSON.stringify(answers),
     totalScore,
     maxPossibleScore,
+    generalNote: input.generalNote?.trim() ?? "",
   };
 
   const row: SheetRow = {
@@ -700,6 +705,7 @@ export async function createRoundScore(
     answersJson: record.answersJson,
     totalScore: String(totalScore),
     maxPossibleScore: String(maxPossibleScore),
+    generalNote: record.generalNote,
   };
 
   await appendRow(SHEET_NAMES.SCORES, row);

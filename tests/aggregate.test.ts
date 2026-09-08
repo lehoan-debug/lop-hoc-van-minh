@@ -45,6 +45,7 @@ function score(overrides: Partial<ScoreRecord>): ScoreRecord {
     answersJson: "{}",
     totalScore: 8,
     maxPossibleScore: 11,
+    generalNote: "",
     ...overrides,
   };
 }

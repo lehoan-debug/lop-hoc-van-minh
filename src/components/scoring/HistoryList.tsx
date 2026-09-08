@@ -94,6 +94,12 @@ export function HistoryList({
             </button>
             {open && (
               <div className="space-y-1.5 border-t border-border px-4 py-3">
+                {s.generalNote && (
+                  <p className="rounded-md bg-secondary/50 px-3 py-2 text-sm">
+                    <span className="font-medium">Nhận xét chung: </span>
+                    <span className="text-muted-foreground">{s.generalNote}</span>
+                  </p>
+                )}
                 {isV2
                   ? snapshot.map((item, i) => (
                       <div key={item.criterionId} className="text-sm">

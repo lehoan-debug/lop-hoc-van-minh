@@ -51,6 +51,9 @@ const submitRoundScoreSchema = z.object({
   bonusNote: z.string().max(1000).optional().default(""),
   penaltyPoints: z.number().int().min(0).max(ADJUSTMENT_POINTS_MAX).optional().default(0),
   penaltyNote: z.string().max(1000).optional().default(""),
+  // Nhận xét chung cho cả lượt chấm (không gắn 1 tiêu chí cụ thể) — hiện dạng
+  // tag cho GVCN xem, khác với ghi chú riêng của từng tiêu chí KHÔNG ĐẠT.
+  generalNote: z.string().max(1000).optional().default(""),
 });
 
 export async function submitRoundScoreAction(
@@ -121,6 +124,7 @@ export async function submitRoundScoreAction(
       judgeEmail: user.email,
       judgeName: user.name,
       criteriaSnapshot: snapshot,
+      generalNote: input.generalNote,
     });
 
     await appendAuditLog({

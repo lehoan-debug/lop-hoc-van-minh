@@ -157,6 +157,9 @@ export interface ScoreRecord {
   /** V2 — tổng điểm tối đa có thể đạt (tổng maxScore các tiêu chí trong
    * snapshot). null ở bản ghi V1 (dùng CRITERIA_COUNT thay thế). */
   maxPossibleScore: number | null;
+  /** V2 — nhận xét chung của Giám khảo cho cả lượt chấm (không gắn với 1
+   * tiêu chí cụ thể) — hiện dạng tag cho GVCN xem. Rỗng ở bản ghi V1. */
+  generalNote: string;
 }
 
 export interface AdjustmentRecord {

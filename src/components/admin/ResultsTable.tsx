@@ -131,6 +131,12 @@ export function ResultsTable({
                   {open && (
                     <tr className="border-b border-border bg-secondary/30">
                       <td colSpan={8} className="px-4 py-3">
+                        {s.generalNote && (
+                          <p className="mb-2 rounded-md bg-card px-3 py-2 text-sm">
+                            <span className="font-medium">Nhận xét chung: </span>
+                            <span className="text-muted-foreground">{s.generalNote}</span>
+                          </p>
+                        )}
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
                           {results.map((r, i) => (
                             <div key={r.criterionId} className="text-sm">

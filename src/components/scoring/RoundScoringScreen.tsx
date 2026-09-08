@@ -13,6 +13,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
@@ -53,6 +54,7 @@ interface DraftShape {
   bonusNote?: string;
   penaltyPoints?: number;
   penaltyNote?: string;
+  generalNote?: string;
 }
 
 interface RoundScoringScreenProps {
@@ -108,6 +110,7 @@ export function RoundScoringScreen({
   const [bonusNote, setBonusNote] = React.useState("");
   const [penaltyPoints, setPenaltyPoints] = React.useState(0);
   const [penaltyNote, setPenaltyNote] = React.useState("");
+  const [generalNote, setGeneralNote] = React.useState("");
   const [phase, setPhase] = React.useState<Phase>("scoring");
   const [submittedTotals, setSubmittedTotals] = React.useState<{
     totalScore: number;
@@ -124,7 +127,8 @@ export function RoundScoringScreen({
         const parsed = JSON.parse(raw) as DraftShape;
         const hasAnswers = parsed.answers && Object.keys(parsed.answers).length > 0;
         const hasAdjustments = (parsed.bonusPoints ?? 0) > 0 || (parsed.penaltyPoints ?? 0) > 0;
-        if (hasAnswers || hasAdjustments) {
+        const hasGeneralNote = (parsed.generalNote ?? "").trim().length > 0;
+        if (hasAnswers || hasAdjustments || hasGeneralNote) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setDraftPrompt(parsed);
         }
@@ -164,7 +168,7 @@ export function RoundScoringScreen({
       } else {
         next[criterionId] = value;
       }
-      saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
+      saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote, generalNote });
       return next;
     });
   };
@@ -172,26 +176,30 @@ export function RoundScoringScreen({
   const setNote = (criterionId: string, note: string) => {
     setNotes((prev) => {
       const next = { ...prev, [criterionId]: note };
-      saveDraft({ answers, notes: next, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
+      saveDraft({ answers, notes: next, bonusPoints, bonusNote, penaltyPoints, penaltyNote, generalNote });
       return next;
     });
   };
 
   const handleBonusChange = (value: number) => {
     setBonusPoints(value);
-    saveDraft({ answers, notes, bonusPoints: value, bonusNote, penaltyPoints, penaltyNote });
+    saveDraft({ answers, notes, bonusPoints: value, bonusNote, penaltyPoints, penaltyNote, generalNote });
   };
   const handleBonusNoteChange = (value: string) => {
     setBonusNote(value);
-    saveDraft({ answers, notes, bonusPoints, bonusNote: value, penaltyPoints, penaltyNote });
+    saveDraft({ answers, notes, bonusPoints, bonusNote: value, penaltyPoints, penaltyNote, generalNote });
   };
   const handlePenaltyChange = (value: number) => {
     setPenaltyPoints(value);
-    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints: value, penaltyNote });
+    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints: value, penaltyNote, generalNote });
   };
   const handlePenaltyNoteChange = (value: string) => {
     setPenaltyNote(value);
-    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote: value });
+    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote: value, generalNote });
+  };
+  const handleGeneralNoteChange = (value: string) => {
+    setGeneralNote(value);
+    saveDraft({ answers, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote, generalNote: value });
   };
 
   const handleQuickScore = () => {
@@ -200,7 +208,7 @@ export function RoundScoringScreen({
       next[c.criterionId] = "PASS";
     });
     setAnswers(next);
-    saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
+    saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote, generalNote });
     toast({
       variant: "info",
       title: `Đã đánh dấu ${criteria.length} tiêu chí là Đạt.`,
@@ -242,6 +250,7 @@ export function RoundScoringScreen({
             bonusNote,
             penaltyPoints,
             penaltyNote,
+            generalNote,
           }),
           SUBMIT_TIMEOUT_MS,
         );
@@ -288,6 +297,7 @@ export function RoundScoringScreen({
               setBonusNote(draftPrompt.bonusNote ?? "");
               setPenaltyPoints(draftPrompt.penaltyPoints ?? 0);
               setPenaltyNote(draftPrompt.penaltyNote ?? "");
+              setGeneralNote(draftPrompt.generalNote ?? "");
               setDraftPrompt(null);
             }}
           >
@@ -322,6 +332,12 @@ export function RoundScoringScreen({
           <p className="mt-2 text-2xl font-bold text-success">
             {existingScore.totalScore ?? 0}/{existingScore.maxPossibleScore ?? 0}
           </p>
+          {existingScore.generalNote && (
+            <p className="mt-3 rounded-md bg-card px-3 py-2 text-left text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Nhận xét chung: </span>
+              {existingScore.generalNote}
+            </p>
+          )}
         </div>
         <Button className="mt-5 w-full" onClick={() => router.push(`/judge/${round.roundId}`)}>
           Về danh sách lớp
@@ -414,7 +430,16 @@ export function RoundScoringScreen({
           })}
         </div>
 
-        <div className="px-4">
+        {generalNote && (
+          <div className="px-4">
+            <div className="rounded-[var(--radius)] border border-border bg-card p-4 text-sm">
+              <p className="mb-1 font-semibold">Nhận xét chung</p>
+              <p className="text-muted-foreground">{generalNote}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="px-4 pt-2">
           <div className="rounded-[var(--radius)] border border-border bg-card p-4 text-sm">
             <p className="mb-2 font-semibold">Kết quả tạm tính</p>
             <div className="flex items-center justify-between py-1">
@@ -529,6 +554,22 @@ export function RoundScoringScreen({
             note={penaltyNote}
             onPointsChange={handlePenaltyChange}
             onNoteChange={handlePenaltyNoteChange}
+          />
+        </div>
+
+        <div className="mt-4 rounded-[var(--radius)] border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-semibold">Nhận xét chung</p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Ghi chú chi tiết cho cả lượt chấm (không gắn với 1 tiêu chí cụ thể) — Giáo viên chủ
+            nhiệm sẽ nhìn thấy nhận xét này.
+          </p>
+          <Textarea
+            value={generalNote}
+            onChange={(e) => handleGeneralNoteChange(e.target.value)}
+            placeholder="Vd: Lớp có tinh thần tốt nhưng còn vài bạn để đồ cá nhân trên bàn..."
+            className="text-sm"
+            rows={3}
+            maxLength={1000}
           />
         </div>
 

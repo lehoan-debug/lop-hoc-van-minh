@@ -3,13 +3,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Trophy, Award, ThumbsDown, ChevronDown } from "lucide-react";
+import { Trophy, Award, ThumbsDown, ChevronDown, MessageSquareText, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
 import type { ClassRankingResult } from "@/lib/ranking/rankClasses";
-import type { CriterionFailureStat } from "@/lib/admin/aggregate";
+import type { ClassDailyScoreSummary, CriterionFailureStat } from "@/lib/admin/aggregate";
 import type {
+  AdjustmentRecord,
   ClassConfig,
   CriterionConfig,
   CriterionSnapshotItem,
@@ -21,9 +22,12 @@ export function HomeroomDashboard({
   classInfo,
   myClasses,
   combineMode,
+  isUnconfirmed,
+  dailySummary,
   todayLabel,
   todayScores,
   monthScores,
+  monthAdjustments,
   ranking,
   totalRankedInGrade,
   failureStats,
@@ -34,9 +38,12 @@ export function HomeroomDashboard({
   classInfo: ClassConfig;
   myClasses: ClassConfig[];
   combineMode: DailyScoreCombineModeSetting;
+  isUnconfirmed: boolean;
+  dailySummary: ClassDailyScoreSummary | null;
   todayLabel: string;
   todayScores: ScoreRecord[];
   monthScores: ScoreRecord[];
+  monthAdjustments: AdjustmentRecord[];
   ranking: ClassRankingResult | null;
   totalRankedInGrade: number;
   failureStats: CriterionFailureStat[];
@@ -49,6 +56,7 @@ export function HomeroomDashboard({
 
   const todayTotal = todayScores.reduce((sum, s) => sum + getEffectiveScore(s), 0);
   const todayMax = todayScores.reduce((sum, s) => sum + getEffectiveMaxScore(s), 0);
+  const commentCount = monthScores.filter((s) => s.generalNote).length;
 
   return (
     <div className="mx-auto max-w-lg p-4 pb-8">
@@ -87,7 +95,7 @@ export function HomeroomDashboard({
           <p className="text-xs text-muted-foreground">Xếp hạng tháng</p>
           <p className="mt-1 flex items-center gap-1 text-xl font-bold">
             <Trophy className="h-4 w-4 text-warning" />
-            {ranking ? `${ranking.rank}/${totalRankedInGrade}` : "—"}
+            {isUnconfirmed ? "—" : ranking ? `${ranking.rank}/${totalRankedInGrade}` : "—"}
           </p>
         </div>
         <div className="rounded-[var(--radius)] border border-border bg-card p-3">
@@ -104,10 +112,52 @@ export function HomeroomDashboard({
         </div>
       </div>
 
-      {combineMode === "UNCONFIRMED" && (
+      {!isUnconfirmed && (
         <p className="mb-4 text-xs text-muted-foreground">
-          * Công thức điểm ngày chưa được BTC xác nhận — điểm hiển thị mang tính tham khảo.
+          Cách kết hợp điểm sáng/chiều: {combineMode === "SUM" ? "Cộng tổng" : "Trung bình"}
         </p>
+      )}
+
+      {isUnconfirmed && (
+        <div className="mb-4 rounded-[var(--radius)] border border-warning/30 bg-warning/5 p-4">
+          <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-warning">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Công thức điểm ngày chưa được BTC xác nhận
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Chưa có &quot;xếp hạng&quot; chính thức. Số liệu dưới đây chỉ mang tính tham khảo.
+          </p>
+          {dailySummary ? (
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-md bg-card px-3 py-2">
+                <p className="text-xs text-muted-foreground">TB buổi sáng</p>
+                <p className="font-semibold">
+                  {dailySummary.avgMorning !== null ? dailySummary.avgMorning.toFixed(1) : "—"}
+                </p>
+              </div>
+              <div className="rounded-md bg-card px-3 py-2">
+                <p className="text-xs text-muted-foreground">TB buổi chiều</p>
+                <p className="font-semibold">
+                  {dailySummary.avgAfternoon !== null ? dailySummary.avgAfternoon.toFixed(1) : "—"}
+                </p>
+              </div>
+              <div className="rounded-md bg-card px-3 py-2">
+                <p className="text-xs text-muted-foreground">TB tổng 2 buổi/ngày</p>
+                <p className="font-semibold">
+                  {dailySummary.avgOfSum !== null ? dailySummary.avgOfSum.toFixed(1) : "—"}
+                </p>
+              </div>
+              <div className="rounded-md bg-card px-3 py-2">
+                <p className="text-xs text-muted-foreground">TB trung bình 2 buổi/ngày</p>
+                <p className="font-semibold">
+                  {dailySummary.avgOfAverage !== null ? dailySummary.avgOfAverage.toFixed(1) : "—"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Chưa có dữ liệu chấm điểm trong tháng.</p>
+          )}
+        </div>
       )}
 
       {failureStats.length > 0 && (
@@ -124,8 +174,46 @@ export function HomeroomDashboard({
         </div>
       )}
 
+      {monthAdjustments.length > 0 && (
+        <div className="mb-4 rounded-[var(--radius)] border border-border bg-card p-4">
+          <h2 className="mb-2 text-sm font-semibold">Điểm cộng/trừ chi tiết (tháng này)</h2>
+          <div className="space-y-2">
+            {monthAdjustments.map((a) => (
+              <div key={a.adjustmentId} className="rounded-md border border-border px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      a.type === "BONUS" ? "text-success" : "text-destructive",
+                    )}
+                  >
+                    {a.type === "BONUS" ? "+" : "-"}
+                    {a.points} điểm
+                  </span>
+                  <span className="text-xs text-muted-foreground">{formatDateVN(a.date)}</span>
+                </div>
+                {a.description && <p className="mt-0.5 text-xs text-muted-foreground">{a.description}</p>}
+                {(a.studentName || a.studentCode) && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Học sinh: {[a.studentName, a.studentCode].filter(Boolean).join(" - ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-[var(--radius)] border border-border bg-card p-4">
-        <h2 className="mb-2 text-sm font-semibold">Lịch sử chấm điểm</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Kết quả chi tiết (lịch sử chấm điểm)</h2>
+          {commentCount > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MessageSquareText className="h-3.5 w-3.5" />
+              {commentCount} nhận xét
+            </span>
+          )}
+        </div>
         <div className="space-y-2">
           {monthScores.map((s) => {
             const open = openId === s.submissionId;
@@ -143,10 +231,18 @@ export function HomeroomDashboard({
                   onClick={() => setOpenId(open ? null : s.submissionId)}
                   className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
                 >
-                  <span>
-                    {formatDateVN(s.date)} · {formatTimeVN(s.timestamp)}
-                  </span>
-                  <span className="flex items-center gap-2">
+                  <div>
+                    <span>
+                      {formatDateVN(s.date)} · {formatTimeVN(s.timestamp)}
+                    </span>
+                    {s.generalNote && (
+                      <span className="mt-1 flex items-center gap-1 text-xs text-primary">
+                        <MessageSquareText className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{s.generalNote}</span>
+                      </span>
+                    )}
+                  </div>
+                  <span className="flex shrink-0 items-center gap-2">
                     <strong>
                       {getEffectiveScore(s)}/{getEffectiveMaxScore(s)}
                     </strong>
@@ -155,13 +251,24 @@ export function HomeroomDashboard({
                 </button>
                 {open && (
                   <div className="space-y-1 border-t border-border px-3 py-2 text-xs">
+                    {s.generalNote && (
+                      <p className="mb-1.5 rounded-md bg-secondary/50 px-2 py-1.5">
+                        <span className="font-medium">Nhận xét chung: </span>
+                        <span className="text-muted-foreground">{s.generalNote}</span>
+                      </p>
+                    )}
                     {s.roundId
                       ? snapshot.map((item) => (
-                          <div key={item.criterionId} className="flex items-center justify-between">
-                            <span>{item.name}</span>
-                            <span className={item.result === "PASS" ? "text-success" : "text-warning"}>
-                              {item.result === "PASS" ? "Đạt" : "Không đạt"}
-                            </span>
+                          <div key={item.criterionId}>
+                            <div className="flex items-center justify-between">
+                              <span>{item.name}</span>
+                              <span className={item.result === "PASS" ? "text-success" : "text-warning"}>
+                                {item.result === "PASS" ? "Đạt" : "Không đạt"}
+                              </span>
+                            </div>
+                            {item.note && (
+                              <p className="italic text-muted-foreground">Ghi chú: {item.note}</p>
+                            )}
                           </div>
                         ))
                       : criteria.map((c) => (

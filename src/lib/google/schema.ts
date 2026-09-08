@@ -86,6 +86,8 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "answersJson",
     "totalScore",
     "maxPossibleScore",
+    // V2 — thêm cuối, nhận xét chung của Giám khảo cho cả lượt chấm
+    "generalNote",
   ],
   [SHEET_NAMES.ADJUSTMENTS]: [
     "adjustmentId",

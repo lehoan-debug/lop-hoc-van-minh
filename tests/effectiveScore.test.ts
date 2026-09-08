@@ -39,6 +39,7 @@ function legacyScore(overrides: Partial<ScoreRecord> = {}): ScoreRecord {
     answersJson: "{}",
     totalScore: null,
     maxPossibleScore: null,
+    generalNote: "",
     ...overrides,
   };
 }
