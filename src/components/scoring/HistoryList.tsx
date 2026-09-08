@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
 import { CRITERIA_COUNT, type CriterionKey } from "@/types";
-import type { CriterionSnapshotItem, ScoreRecord, CriterionConfig, Session_ } from "@/types";
+import type { AdjustmentRecord, CriterionSnapshotItem, ScoreRecord, CriterionConfig, Session_ } from "@/types";
 
 const SESSION_LABEL: Record<Session_, string> = {
   MORNING: "Sáng",
@@ -16,11 +16,24 @@ const SESSION_LABEL: Record<Session_, string> = {
 export function HistoryList({
   scores,
   criteria,
+  adjustments = [],
 }: {
   scores: ScoreRecord[];
   criteria: CriterionConfig[];
+  adjustments?: AdjustmentRecord[];
 }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const bonusPenaltyByDateClass = React.useMemo(() => {
+    const map = new Map<string, { bonus: number; penalty: number }>();
+    for (const a of adjustments) {
+      const key = `${a.date}__${a.classId}`;
+      const entry = map.get(key) ?? { bonus: 0, penalty: 0 };
+      if (a.type === "BONUS") entry.bonus += a.points;
+      else entry.penalty += a.points;
+      map.set(key, entry);
+    }
+    return map;
+  }, [adjustments]);
 
   if (scores.length === 0) {
     return (
@@ -50,6 +63,8 @@ export function HistoryList({
           }
         }
 
+        const dayTotals = bonusPenaltyByDateClass.get(`${s.date}__${s.classId}`);
+
         return (
           <div key={s.submissionId} className="rounded-[var(--radius)] border border-border bg-card">
             <button
@@ -61,6 +76,14 @@ export function HistoryList({
                 <p className="text-xs text-muted-foreground">
                   {formatDateVN(s.date)} · {formatTimeVN(s.timestamp)} · {SESSION_LABEL[s.session]}
                 </p>
+                {dayTotals && (dayTotals.bonus > 0 || dayTotals.penalty > 0) && (
+                  <p className="text-xs">
+                    {dayTotals.bonus > 0 && <span className="text-success">+{dayTotals.bonus}</span>}
+                    {dayTotals.bonus > 0 && dayTotals.penalty > 0 && " / "}
+                    {dayTotals.penalty > 0 && <span className="text-warning">-{dayTotals.penalty}</span>}
+                    <span className="text-muted-foreground"> (cộng/trừ cả ngày)</span>
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base font-bold">

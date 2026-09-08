@@ -46,6 +46,8 @@ interface ClassRow {
   classInfo: ClassConfig;
   assignedJudgeEmails: string[];
   score: ScoreRecord | null;
+  bonusTotal: number;
+  penaltyTotal: number;
 }
 
 export function RoundDetailClient({
@@ -284,7 +286,8 @@ export function RoundDetailClient({
               <th className="px-3 py-2">Trạng thái</th>
               <th className="px-3 py-2">Người chấm</th>
               <th className="px-3 py-2">Thời gian</th>
-              <th className="px-3 py-2">Điểm</th>
+              <th className="px-3 py-2">Điểm tiêu chí</th>
+              <th className="px-3 py-2">Cộng/Trừ (cả ngày)</th>
             </tr>
           </thead>
           <tbody>
@@ -317,11 +320,22 @@ export function RoundDetailClient({
                 <td className="px-3 py-2">
                   {row.score ? `${getEffectiveScore(row.score)}/${getEffectiveMaxScore(row.score)}` : "—"}
                 </td>
+                <td className="px-3 py-2 text-xs">
+                  {row.bonusTotal > 0 || row.penaltyTotal > 0 ? (
+                    <span>
+                      {row.bonusTotal > 0 && <span className="text-success">+{row.bonusTotal}</span>}
+                      {row.bonusTotal > 0 && row.penaltyTotal > 0 && " / "}
+                      {row.penaltyTotal > 0 && <span className="text-warning">-{row.penaltyTotal}</span>}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                   Không có lớp phù hợp bộ lọc.
                 </td>
               </tr>

@@ -15,26 +15,51 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { editScoreAction, deleteScoreAction } from "@/lib/actions/adminActions";
+import {
+  getEffectiveScore,
+  getEffectiveMaxScore,
+  getEffectiveCriteriaResults,
+  isRoundScore,
+} from "@/lib/scoring/effectiveScore";
 import { CRITERIA_COUNT, type CriterionKey } from "@/types";
-import type { ScoreRecord, CriterionConfig, Session_ } from "@/types";
+import type { AdjustmentRecord, ScoreRecord, CriterionConfig, Session_ } from "@/types";
 
 const SESSION_LABEL: Record<Session_, string> = { MORNING: "Sáng", AFTERNOON: "Chiều" };
 
 export function ResultsTable({
   scores,
   criteria,
+  adjustments,
 }: {
   scores: ScoreRecord[];
   criteria: CriterionConfig[];
+  adjustments: AdjustmentRecord[];
 }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<ScoreRecord | null>(null);
   const [deleting, setDeleting] = React.useState<ScoreRecord | null>(null);
 
+  // Adjustments không gắn với 1 lượt chấm cụ thể (chỉ theo ngày + lớp) — xem
+  // docs/CLASS_ASSIGNMENT_UPGRADE.md / schema Adjustments. Nếu 1 lớp có nhiều
+  // lượt chấm trong cùng 1 ngày (vd. nhiều Đợt chấm), số cộng/trừ hiển thị là
+  // TỔNG CẢ NGÀY của lớp đó, không tách riêng theo từng lượt — ghi rõ trong
+  // nhãn cột để không gây hiểu nhầm là "điểm cộng/trừ của riêng lượt này".
+  const bonusPenaltyByDateClass = React.useMemo(() => {
+    const map = new Map<string, { bonus: number; penalty: number }>();
+    for (const a of adjustments) {
+      const key = `${a.date}__${a.classId}`;
+      const entry = map.get(key) ?? { bonus: 0, penalty: 0 };
+      if (a.type === "BONUS") entry.bonus += a.points;
+      else entry.penalty += a.points;
+      map.set(key, entry);
+    }
+    return map;
+  }, [adjustments]);
+
   return (
     <>
       <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead className="border-b border-border bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Thời gian</th>
@@ -42,19 +67,17 @@ export function ResultsTable({
               <th className="px-3 py-2">Khối</th>
               <th className="px-3 py-2">Lớp</th>
               <th className="px-3 py-2">Người chấm</th>
-              <th className="px-3 py-2">Điểm</th>
+              <th className="px-3 py-2">Điểm tiêu chí</th>
+              <th className="px-3 py-2">Cộng/Trừ (cả ngày)</th>
               <th className="px-3 py-2 text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {scores.map((s) => {
               const open = openId === s.submissionId;
-              let notes: { criterionNumber: number; note: string }[] = [];
-              try {
-                notes = JSON.parse(s.notesJson || "[]");
-              } catch {
-                notes = [];
-              }
+              const isV2 = isRoundScore(s);
+              const results = getEffectiveCriteriaResults(s, criteria);
+              const dayTotals = bonusPenaltyByDateClass.get(`${s.date}__${s.classId}`);
               return (
                 <React.Fragment key={s.submissionId}>
                   <tr className="border-b border-border last:border-0 hover:bg-accent/50">
@@ -66,7 +89,18 @@ export function ResultsTable({
                     <td className="px-3 py-2 font-medium">{s.className}</td>
                     <td className="px-3 py-2">{s.judgeName || s.judgeEmail}</td>
                     <td className="px-3 py-2 font-semibold">
-                      {s.totalCriteriaScore}/{CRITERIA_COUNT}
+                      {getEffectiveScore(s)}/{getEffectiveMaxScore(s)}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {dayTotals && (dayTotals.bonus > 0 || dayTotals.penalty > 0) ? (
+                        <span>
+                          {dayTotals.bonus > 0 && <span className="text-success">+{dayTotals.bonus}</span>}
+                          {dayTotals.bonus > 0 && dayTotals.penalty > 0 && " / "}
+                          {dayTotals.penalty > 0 && <span className="text-warning">-{dayTotals.penalty}</span>}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
@@ -78,9 +112,19 @@ export function ResultsTable({
                           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
                         </button>
                         <button
-                          onClick={() => setEditing(s)}
-                          className="rounded p-1.5 text-primary hover:bg-accent"
-                          title="Chỉnh sửa"
+                          onClick={() => !isV2 && setEditing(s)}
+                          disabled={isV2}
+                          className={cn(
+                            "rounded p-1.5",
+                            isV2
+                              ? "cursor-not-allowed text-muted-foreground opacity-40"
+                              : "text-primary hover:bg-accent",
+                          )}
+                          title={
+                            isV2
+                              ? "Chưa hỗ trợ sửa trực tiếp lượt chấm theo Đợt chấm — chỉ xoá được"
+                              : "Chỉnh sửa"
+                          }
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -96,22 +140,18 @@ export function ResultsTable({
                   </tr>
                   {open && (
                     <tr className="border-b border-border bg-secondary/30">
-                      <td colSpan={7} className="px-4 py-3">
+                      <td colSpan={8} className="px-4 py-3">
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
-                          {criteria.map((c) => {
-                            const ck = `c${c.criterionNumber}` as CriterionKey;
-                            const val = s[ck];
-                            const note = notes.find((n) => n.criterionNumber === c.criterionNumber)?.note;
-                            return (
-                              <div key={c.criterionId} className="text-sm">
-                                <span className="text-muted-foreground">C{c.criterionNumber}: </span>
-                                <span className={val === 1 ? "text-success" : "text-warning"}>
-                                  {val === 1 ? "Đạt" : "Không đạt"}
-                                </span>
-                                {note && <p className="text-xs italic text-muted-foreground">{note}</p>}
-                              </div>
-                            );
-                          })}
+                          {results.map((r, i) => (
+                            <div key={r.criterionId} className="text-sm">
+                              <span className="text-muted-foreground">
+                                {isV2 ? `${i + 1}. ${r.criterionName}` : `${r.criterionName}`}:{" "}
+                              </span>
+                              <span className={r.result === "PASS" ? "text-success" : "text-warning"}>
+                                {r.result === "PASS" ? "Đạt" : "Không đạt"}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </td>
                     </tr>
@@ -121,7 +161,7 @@ export function ResultsTable({
             })}
             {scores.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                   Không có kết quả phù hợp với bộ lọc.
                 </td>
               </tr>

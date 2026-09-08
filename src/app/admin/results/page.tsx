@@ -1,5 +1,5 @@
 import { Download, FileSpreadsheet } from "lucide-react";
-import { getClasses, getScores, getCriteria, getUsers } from "@/lib/google/sheets";
+import { getClasses, getScores, getCriteria, getUsers, getAdjustments } from "@/lib/google/sheets";
 import { todayVN } from "@/lib/timezone/timezone";
 import { canAccessScoring } from "@/lib/auth/permissions";
 import { DashboardFilters } from "@/components/admin/DashboardFilters";
@@ -18,11 +18,12 @@ export default async function AdminResultsPage({
   const judgeEmail = sp.judgeEmail || undefined;
   const session = (sp.session as Session_ | undefined) || undefined;
 
-  const [classes, criteria, allJudges, scores] = await Promise.all([
+  const [classes, criteria, allJudges, scores, adjustments] = await Promise.all([
     getClasses({ activeOnly: true }),
     getCriteria({ activeOnly: true }),
     getUsers(),
     getScores({ dateFrom: date, dateTo: date, grade, classId, judgeEmail, session }),
+    getAdjustments({ dateFrom: date, dateTo: date }),
   ]);
 
   const sorted = [...scores].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -57,7 +58,7 @@ export default async function AdminResultsPage({
         </div>
       </div>
       <DashboardFilters classes={classes} judges={judges} />
-      <ResultsTable scores={sorted} criteria={criteria} />
+      <ResultsTable scores={sorted} criteria={criteria} adjustments={adjustments} />
     </div>
   );
 }

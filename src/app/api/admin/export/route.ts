@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/session";
-import { getScores } from "@/lib/google/sheets";
+import { getScores, getCriteria } from "@/lib/google/sheets";
+import { getEffectiveScore, getEffectiveMaxScore, getEffectiveCriteriaResults } from "@/lib/scoring/effectiveScore";
 import { toErrorResponse } from "@/lib/api/errors";
 import { formatDateVN, formatDateTimeVN } from "@/lib/timezone/timezone";
-import { CRITERION_KEYS } from "@/types";
 import type { Grade, Session_ } from "@/types";
 
 function csvEscape(v: string | number): string {
@@ -26,8 +26,15 @@ export async function GET(req: NextRequest) {
     const session = (params.get("session") as Session_ | null) || undefined;
     const judgeEmail = params.get("judgeEmail") || undefined;
 
-    const scores = await getScores({ dateFrom, dateTo, grade, classId, session, judgeEmail });
+    const [scores, criteria] = await Promise.all([
+      getScores({ dateFrom, dateTo, grade, classId, session, judgeEmail }),
+      getCriteria(),
+    ]);
 
+    // Đọc điểm qua getEffectiveScore/getEffectiveMaxScore/getEffectiveCriteriaResults
+    // (không đọc thẳng totalCriteriaScore/c1..c11) — bắt buộc để CSV hiện đúng
+    // số cho cả lượt chấm V1 (legacy) lẫn V2 (theo Đợt chấm, tiêu chí động),
+    // tránh lặp lại lỗi từng khiến CSV hiện 0 điểm cho mọi lượt chấm V2.
     const header = [
       "Ngày",
       "Thời gian",
@@ -35,20 +42,28 @@ export async function GET(req: NextRequest) {
       "Khối",
       "Lớp",
       "Người chấm",
-      ...CRITERION_KEYS.map((_, i) => `Tiêu chí ${i + 1}`),
-      "Tổng điểm",
+      "Điểm tiêu chí",
+      "Điểm tối đa",
+      "Chi tiết tiêu chí",
     ];
 
-    const rows = scores.map((s) => [
-      formatDateVN(s.date),
-      formatDateTimeVN(s.timestamp),
-      s.session === "MORNING" ? "Sáng" : "Chiều",
-      s.grade,
-      s.className,
-      s.judgeName || s.judgeEmail,
-      ...CRITERION_KEYS.map((k) => s[k]),
-      s.totalCriteriaScore,
-    ]);
+    const rows = scores.map((s) => {
+      const results = getEffectiveCriteriaResults(s, criteria);
+      const detail = results
+        .map((r) => `${r.criterionName}: ${r.result === "PASS" ? "Đạt" : "Không đạt"}`)
+        .join("; ");
+      return [
+        formatDateVN(s.date),
+        formatDateTimeVN(s.timestamp),
+        s.session === "MORNING" ? "Sáng" : "Chiều",
+        s.grade,
+        s.className,
+        s.judgeName || s.judgeEmail,
+        getEffectiveScore(s),
+        getEffectiveMaxScore(s),
+        detail,
+      ];
+    });
 
     const csv = [header, ...rows]
       .map((row) => row.map(csvEscape).join(","))

@@ -5,8 +5,10 @@ import {
   getRoundAssignments,
   getScores,
   getUsers,
+  getAdjustments,
 } from "@/lib/google/sheets";
 import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
+import { formatInVN } from "@/lib/timezone/timezone";
 import { RoundDetailClient } from "@/components/admin/RoundDetailClient";
 
 export default async function AdminScoringRoundDetailPage({
@@ -18,11 +20,14 @@ export default async function AdminScoringRoundDetailPage({
   const round = await getScoringRound(roundId);
   if (!round) notFound();
 
-  const [allClasses, assignments, scores, users] = await Promise.all([
+  const roundDate = formatInVN(round.startsAt, "yyyy-MM-dd");
+
+  const [allClasses, assignments, scores, users, adjustments] = await Promise.all([
     getClasses({ activeOnly: true }),
     getRoundAssignments(roundId),
     getScores({ roundId }),
     getUsers(),
+    getAdjustments({ dateFrom: roundDate, dateTo: roundDate }),
   ]);
 
   const classesInScope = allClasses.filter((c) => isClassInRoundScope(round, c.classId, c.grade));
@@ -33,10 +38,13 @@ export default async function AdminScoringRoundDetailPage({
   const classRows = classesInScope.map((c) => {
     const assignedJudges = assignments.filter((a) => isClassInAssignmentScope(a, c.classId, c.grade));
     const score = scores.find((s) => s.classId === c.classId);
+    const classAdjustments = adjustments.filter((a) => a.classId === c.classId);
     return {
       classInfo: c,
       assignedJudgeEmails: assignedJudges.map((a) => a.userEmail),
       score: score ?? null,
+      bonusTotal: classAdjustments.filter((a) => a.type === "BONUS").reduce((sum, a) => sum + a.points, 0),
+      penaltyTotal: classAdjustments.filter((a) => a.type === "PENALTY").reduce((sum, a) => sum + a.points, 0),
     };
   });
 
