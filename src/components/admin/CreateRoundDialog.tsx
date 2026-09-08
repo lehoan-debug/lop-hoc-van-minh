@@ -26,15 +26,18 @@ import { cn } from "@/lib/utils";
 import { todayVN } from "@/lib/timezone/timezone";
 import { useRouter } from "next/navigation";
 import { createRoundAction, assignJudgeAction, assignAllJudgesAction } from "@/lib/actions/roundActions";
-import type { AppUser, ClassConfig, Grade, Session_ } from "@/types";
+import { criterionAppliesToGrade } from "@/lib/rounds/eligibility";
+import type { AppUser, ClassConfig, CriterionConfig, Grade, Session_ } from "@/types";
 
 export function CreateRoundDialog({
   classes,
   judges,
+  criteria,
   onClose,
 }: {
   classes: ClassConfig[];
   judges: AppUser[];
+  criteria: CriterionConfig[];
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -48,6 +51,7 @@ export function CreateRoundDialog({
   const [endTime, setEndTime] = React.useState("07:40");
   const [grades, setGrades] = React.useState<Grade[]>([]);
   const [classIds, setClassIds] = React.useState<string[]>([]);
+  const [criterionIds, setCriterionIds] = React.useState<string[]>([]);
   const [judgeQuery, setJudgeQuery] = React.useState("");
   const [selectedJudges, setSelectedJudges] = React.useState<string[]>([]);
   const [allJudges, setAllJudges] = React.useState(false);
@@ -57,6 +61,11 @@ export function CreateRoundDialog({
   };
   const toggleClass = (classId: string) => {
     setClassIds((prev) => (prev.includes(classId) ? prev.filter((x) => x !== classId) : [...prev, classId]));
+  };
+  const toggleCriterion = (criterionId: string) => {
+    setCriterionIds((prev) =>
+      prev.includes(criterionId) ? prev.filter((x) => x !== criterionId) : [...prev, criterionId],
+    );
   };
   const toggleJudge = (email: string) => {
     setSelectedJudges((prev) => (prev.includes(email) ? prev.filter((x) => x !== email) : [...prev, email]));
@@ -69,6 +78,10 @@ export function CreateRoundDialog({
   );
 
   const classesForGrades = grades.length === 0 ? classes : classes.filter((c) => grades.includes(c.grade));
+  const criteriaForGrades =
+    grades.length === 0
+      ? criteria
+      : criteria.filter((c) => grades.some((g) => criterionAppliesToGrade(c, g)));
 
   const handleSubmit = () => {
     if (!title.trim()) {
@@ -85,6 +98,7 @@ export function CreateRoundDialog({
         endTime,
         gradeIds: grades,
         classIds,
+        criterionIds,
       });
       if (!result.ok) {
         toast({ variant: "error", title: result.error });
@@ -196,6 +210,37 @@ export function CreateRoundDialog({
                   {c.className}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Tiêu chí áp dụng (bỏ trống = tất cả tiêu chí phù hợp khối)</Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Vd: đợt chấm này chỉ chấm 8/11 tiêu chí thì chỉ tick 8 tiêu chí đó.
+            </p>
+            <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+              {criteriaForGrades.map((c) => (
+                <button
+                  key={c.criterionId}
+                  type="button"
+                  onClick={() => toggleCriterion(c.criterionId)}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs",
+                    criterionIds.includes(c.criterionId) ? "bg-primary/10 text-primary" : "hover:bg-accent",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border",
+                      criterionIds.includes(c.criterionId) ? "border-primary bg-primary" : "border-border",
+                    )}
+                  />
+                  {c.criterionName}
+                </button>
+              ))}
+              {criteriaForGrades.length === 0 && (
+                <p className="px-2 py-1 text-xs text-muted-foreground">Không có tiêu chí nào.</p>
+              )}
             </div>
           </div>
 

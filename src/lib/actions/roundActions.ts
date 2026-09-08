@@ -48,6 +48,8 @@ const createRoundSchema = z.object({
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
   gradeIds: z.array(gradeSchema).default([]),
   classIds: z.array(z.string()).default([]),
+  /** Rỗng = áp dụng mọi tiêu chí phù hợp khối — xem isCriterionInRoundScope. */
+  criterionIds: z.array(z.string()).default([]),
 });
 
 export async function createRoundAction(raw: unknown): Promise<ActionResult<{ roundId: string }>> {
@@ -72,6 +74,7 @@ export async function createRoundAction(raw: unknown): Promise<ActionResult<{ ro
       endsAt: endsAt.toISOString(),
       gradeIds: input.gradeIds,
       classIds: input.classIds,
+      criterionIds: input.criterionIds,
       createdBy: user.email,
     });
 

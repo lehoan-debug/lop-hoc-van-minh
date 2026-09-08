@@ -36,6 +36,7 @@ import { DeleteRoundConfirmDialog } from "@/components/admin/DeleteRoundConfirmD
 import type {
   AppUser,
   ClassConfig,
+  CriterionConfig,
   Grade,
   ScoreRecord,
   ScoringRound,
@@ -56,12 +57,14 @@ export function RoundDetailClient({
   classRows,
   assignments,
   judges,
+  criteria,
 }: {
   round: ScoringRound;
   classes: ClassConfig[];
   classRows: ClassRow[];
   assignments: ScoringRoundAssignment[];
   judges: AppUser[];
+  criteria: CriterionConfig[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -158,6 +161,9 @@ export function RoundDetailClient({
           <h1 className="text-xl font-bold">{round.title}</h1>
           <p className="text-sm text-muted-foreground">
             {formatDateVN(round.startsAt)} · {formatTimeVN(round.startsAt)}–{formatTimeVN(round.endsAt)}
+            {round.criterionIds.length > 0 && (
+              <> · Áp dụng {round.criterionIds.length}/{criteria.length} tiêu chí</>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -368,6 +374,7 @@ export function RoundDetailClient({
           round={round}
           effectiveStatus={effectiveStatus}
           classes={classes}
+          criteria={criteria}
           onClose={() => {
             setEditing(false);
             router.refresh();

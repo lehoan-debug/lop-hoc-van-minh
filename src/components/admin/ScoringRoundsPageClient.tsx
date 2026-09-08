@@ -13,7 +13,7 @@ import { ROUND_STATUS_LABEL } from "@/lib/rounds/roundStatus";
 import { lockRoundAction, deleteRoundAction } from "@/lib/actions/roundActions";
 import { CreateRoundDialog } from "@/components/admin/CreateRoundDialog";
 import { DeleteRoundConfirmDialog } from "@/components/admin/DeleteRoundConfirmDialog";
-import type { AppUser, ClassConfig, EffectiveRoundStatus, ScoringRound, Session_ } from "@/types";
+import type { AppUser, ClassConfig, CriterionConfig, EffectiveRoundStatus, ScoringRound, Session_ } from "@/types";
 
 export interface RoundListItem {
   round: ScoringRound;
@@ -38,10 +38,12 @@ export function ScoringRoundsPageClient({
   items,
   classes,
   judges,
+  criteria,
 }: {
   items: RoundListItem[];
   classes: ClassConfig[];
   judges: AppUser[];
+  criteria: CriterionConfig[];
 }) {
   const [creating, setCreating] = React.useState(false);
 
@@ -66,7 +68,12 @@ export function ScoringRoundsPageClient({
       </div>
 
       {creating && (
-        <CreateRoundDialog classes={classes} judges={judges} onClose={() => setCreating(false)} />
+        <CreateRoundDialog
+          classes={classes}
+          judges={judges}
+          criteria={criteria}
+          onClose={() => setCreating(false)}
+        />
       )}
     </div>
   );

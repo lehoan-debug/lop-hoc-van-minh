@@ -6,6 +6,7 @@ import {
   getScores,
   getUsers,
   getAdjustments,
+  getCriteria,
 } from "@/lib/google/sheets";
 import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
 import { formatInVN } from "@/lib/timezone/timezone";
@@ -22,12 +23,13 @@ export default async function AdminScoringRoundDetailPage({
 
   const roundDate = formatInVN(round.startsAt, "yyyy-MM-dd");
 
-  const [allClasses, assignments, scores, users, adjustments] = await Promise.all([
+  const [allClasses, assignments, scores, users, adjustments, criteria] = await Promise.all([
     getClasses({ activeOnly: true }),
     getRoundAssignments(roundId),
     getScores({ roundId }),
     getUsers(),
     getAdjustments({ dateFrom: roundDate, dateTo: roundDate }),
+    getCriteria({ activeOnly: true }),
   ]);
 
   const classesInScope = allClasses.filter((c) => isClassInRoundScope(round, c.classId, c.grade));
@@ -55,6 +57,7 @@ export default async function AdminScoringRoundDetailPage({
       classRows={classRows}
       assignments={assignments}
       judges={judges}
+      criteria={criteria}
     />
   );
 }

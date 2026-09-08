@@ -294,14 +294,11 @@ export async function getCriteria(opts?: { activeOnly?: boolean }): Promise<
   return criteria.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-/** Tiêu chí áp dụng cho 1 khối: `gradeIds` rỗng = áp dụng mọi khối (đúng
- * hành vi V1). */
-export function criterionAppliesToGrade(
-  criterion: CriterionConfig,
-  grade: Grade,
-): boolean {
-  return criterion.gradeIds.length === 0 || criterion.gradeIds.includes(grade);
-}
+// criterionAppliesToGrade chuyển sang src/lib/rounds/eligibility.ts (hàm
+// thuần, không import "server-only") — dùng lại được ở Client Component
+// (form chọn tiêu chí khi tạo/sửa Đợt chấm), re-export ở đây để không phải
+// sửa các nơi đã import từ sheets.ts.
+export { criterionAppliesToGrade } from "@/lib/rounds/eligibility";
 
 export interface CreateCriterionInput {
   criterionName: string;
@@ -1030,6 +1027,7 @@ function rowToScoringRound(row: SheetRow): ScoringRound {
     status: (row.status as RoundStoredStatus) || "DRAFT",
     gradeIds: parseJsonArray(row.gradeIdsJson, isGrade),
     classIds: parseJsonArray(row.classIdsJson, isString),
+    criterionIds: parseJsonArray(row.criterionIdsJson, isString),
     createdBy: row.createdBy ?? "",
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
@@ -1058,6 +1056,7 @@ export interface CreateScoringRoundInput {
   endsAt: string;
   gradeIds: Grade[];
   classIds: string[];
+  criterionIds?: string[];
   createdBy: string;
 }
 
@@ -1075,6 +1074,7 @@ export async function createScoringRound(
     status: "OPEN",
     gradeIds: input.gradeIds,
     classIds: input.classIds,
+    criterionIds: input.criterionIds ?? [],
     createdBy: input.createdBy.trim().toLowerCase(),
     createdAt: now,
     updatedAt: now,
@@ -1097,6 +1097,7 @@ export async function createScoringRound(
     updatedAt: record.updatedAt,
     manuallyLockedAt: "",
     manuallyLockedBy: "",
+    criterionIdsJson: JSON.stringify(record.criterionIds),
   });
   return record;
 }
@@ -1111,6 +1112,7 @@ export async function updateScoringRound(
     endsAt?: string;
     gradeIds?: Grade[];
     classIds?: string[];
+    criterionIds?: string[];
     status?: RoundStoredStatus;
   },
 ): Promise<boolean> {
@@ -1122,6 +1124,7 @@ export async function updateScoringRound(
   if (updates.endsAt !== undefined) patch.endsAt = updates.endsAt;
   if (updates.gradeIds !== undefined) patch.gradeIdsJson = JSON.stringify(updates.gradeIds);
   if (updates.classIds !== undefined) patch.classIdsJson = JSON.stringify(updates.classIds);
+  if (updates.criterionIds !== undefined) patch.criterionIdsJson = JSON.stringify(updates.criterionIds);
   if (updates.status !== undefined) patch.status = updates.status;
   return updateRowWhere(SHEET_NAMES.SCORING_ROUNDS, (row) => row.roundId === roundId, patch);
 }

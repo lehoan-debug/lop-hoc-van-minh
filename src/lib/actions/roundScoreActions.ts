@@ -15,7 +15,8 @@ import {
   type CanScoreCode,
 } from "@/lib/google/sheets";
 import { criterionAppliesToGrade } from "@/lib/google/sheets";
-import { buildCriteriaSnapshot, isAllCriteriaAnswered, totalsFromSnapshot } from "@/lib/scoring/roundScore";
+import { isCriterionInRoundScope } from "@/lib/rounds/eligibility";
+import { buildCriteriaSnapshot, isAnyCriterionAnswered, totalsFromSnapshot } from "@/lib/scoring/roundScore";
 import { todayVN, formatDateTimeVN } from "@/lib/timezone/timezone";
 
 export interface SubmitRoundScoreOk {
@@ -96,10 +97,15 @@ export async function submitRoundScoreAction(
     }
 
     const allCriteria = await getCriteria({ activeOnly: true });
-    const criteria = allCriteria.filter((c) => criterionAppliesToGrade(c, klass.grade));
+    const criteria = allCriteria.filter(
+      (c) => criterionAppliesToGrade(c, klass.grade) && isCriterionInRoundScope(round, c.criterionId),
+    );
 
-    if (!isAllCriteriaAnswered(criteria, input.answers)) {
-      return { ok: false, error: "Bạn chưa chấm đủ tất cả tiêu chí.", code: "INVALID" };
+    // Đợt chấm không bắt buộc chấm hết mọi tiêu chí hiển thị (1 đợt có thể
+    // chỉ áp dụng 1 phần bộ tiêu chí, và người chấm có thể bỏ trống tiêu chí
+    // không quan sát được) — chỉ chặn khi KHÔNG chấm gì cả.
+    if (!isAnyCriterionAnswered(criteria, input.answers)) {
+      return { ok: false, error: "Bạn chưa chấm tiêu chí nào.", code: "INVALID" };
     }
 
     const snapshot = buildCriteriaSnapshot(criteria, input.answers, input.notes);

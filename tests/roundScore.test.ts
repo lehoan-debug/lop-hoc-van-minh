@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildCriteriaSnapshot,
   totalsFromSnapshot,
-  isAllCriteriaAnswered,
+  isAnyCriterionAnswered,
 } from "@/lib/scoring/roundScore";
 import type { CriterionConfig } from "@/types";
 
@@ -45,11 +45,26 @@ describe("buildCriteriaSnapshot / totalsFromSnapshot", () => {
     expect(snapshot[0]?.awardedScore).toBe(0.5);
   });
 
-  it("không trả lời (thiếu key) -> mặc định FAIL, không tự cho điểm", () => {
-    const criteria = [criterion({ criterionId: "C1", maxScore: 1 })];
-    const snapshot = buildCriteriaSnapshot(criteria, {});
-    expect(snapshot[0]?.result).toBe("FAIL");
-    expect(snapshot[0]?.awardedScore).toBe(0);
+  it("không trả lời (thiếu key) -> LOẠI KHỎI snapshot hoàn toàn, không tự suy ra KHÔNG ĐẠT và không tính vào maxPossibleScore", () => {
+    const criteria = [
+      criterion({ criterionId: "C1", maxScore: 1 }),
+      criterion({ criterionId: "C2", maxScore: 1 }),
+    ];
+    const snapshot = buildCriteriaSnapshot(criteria, { C1: "PASS" }); // C2 bỏ trống
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0]?.criterionId).toBe("C1");
+    expect(totalsFromSnapshot(snapshot)).toEqual({ totalScore: 1, maxPossibleScore: 1 });
+  });
+
+  it("1 đợt chấm có thể chỉ chấm 1 phần tiêu chí (vd. 2/3) — 2 tiêu chí bỏ trống vẫn tạo snapshot hợp lệ với đúng phần đã chấm", () => {
+    const criteria = [
+      criterion({ criterionId: "C1", maxScore: 1 }),
+      criterion({ criterionId: "C2", maxScore: 1 }),
+      criterion({ criterionId: "C3", maxScore: 1 }),
+    ];
+    const snapshot = buildCriteriaSnapshot(criteria, { C1: "PASS", C2: "FAIL" }); // C3 bỏ trống
+    expect(snapshot).toHaveLength(2);
+    expect(totalsFromSnapshot(snapshot)).toEqual({ totalScore: 1, maxPossibleScore: 2 });
   });
 
   it("tổng điểm tối đa động theo tổng maxScore thực tế, không hard-code 11", () => {
@@ -81,13 +96,17 @@ describe("buildCriteriaSnapshot / totalsFromSnapshot", () => {
   });
 });
 
-describe("isAllCriteriaAnswered", () => {
-  it("thiếu 1 tiêu chí -> false", () => {
+describe("isAnyCriterionAnswered", () => {
+  it("chưa chấm gì cả -> false", () => {
     const criteria = [criterion({ criterionId: "C1" }), criterion({ criterionId: "C2" })];
-    expect(isAllCriteriaAnswered(criteria, { C1: "PASS" })).toBe(false);
+    expect(isAnyCriterionAnswered(criteria, {})).toBe(false);
   });
-  it("đủ toàn bộ -> true", () => {
+  it("chấm ít nhất 1 tiêu chí (dù chưa hết) -> true — không bắt buộc chấm hết mọi tiêu chí", () => {
     const criteria = [criterion({ criterionId: "C1" }), criterion({ criterionId: "C2" })];
-    expect(isAllCriteriaAnswered(criteria, { C1: "PASS", C2: "FAIL" })).toBe(true);
+    expect(isAnyCriterionAnswered(criteria, { C1: "PASS" })).toBe(true);
+  });
+  it("chấm đủ toàn bộ -> true", () => {
+    const criteria = [criterion({ criterionId: "C1" }), criterion({ criterionId: "C2" })];
+    expect(isAnyCriterionAnswered(criteria, { C1: "PASS", C2: "FAIL" })).toBe(true);
   });
 });

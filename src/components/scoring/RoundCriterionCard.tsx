@@ -12,7 +12,8 @@ interface RoundCriterionCardProps {
   maxScore: number;
   value: "PASS" | "FAIL" | undefined;
   note: string;
-  onChange: (value: "PASS" | "FAIL") => void;
+  /** `undefined` = bỏ chọn (chưa chấm) — bấm lại nút đang chọn để bỏ chọn. */
+  onChange: (value: "PASS" | "FAIL" | undefined) => void;
   onNoteChange: (note: string) => void;
 }
 
@@ -54,7 +55,7 @@ export function RoundCriterionCard({
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => onChange("PASS")}
+          onClick={() => onChange(value === "PASS" ? undefined : "PASS")}
           className={cn(
             "flex h-[52px] items-center justify-center gap-2 rounded-[var(--radius)] border text-sm font-semibold transition-colors",
             value === "PASS"
@@ -68,8 +69,9 @@ export function RoundCriterionCard({
         <button
           type="button"
           onClick={() => {
-            onChange("FAIL");
-            setShowNote(true);
+            const next = value === "FAIL" ? undefined : "FAIL";
+            onChange(next);
+            if (next === "FAIL") setShowNote(true);
           }}
           className={cn(
             "flex h-[52px] items-center justify-center gap-2 rounded-[var(--radius)] border text-sm font-semibold transition-colors",

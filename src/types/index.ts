@@ -289,6 +289,11 @@ export interface ScoringRound {
   gradeIds: Grade[];
   /** Rỗng = áp dụng mọi lớp active thuộc gradeIds. */
   classIds: string[];
+  /** Rỗng = áp dụng mọi tiêu chí active phù hợp khối (criterionAppliesToGrade).
+   * Cho phép 1 Đợt chấm chỉ chấm 1 phần tiêu chí (vd. 8/11) — xem
+   * isCriterionInRoundScope. Không đổi cách tính maxScore của từng tiêu chí,
+   * chỉ giới hạn TẬP tiêu chí hiển thị/áp dụng cho Đợt chấm này. */
+  criterionIds: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;

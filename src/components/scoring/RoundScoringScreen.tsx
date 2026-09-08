@@ -154,9 +154,16 @@ export function RoundScoringScreen({
     }
   }, [key]);
 
-  const setAnswer = (criterionId: string, value: "PASS" | "FAIL") => {
+  // value = undefined -> bỏ chọn (trở về "chưa chấm"), đúng yêu cầu bấm lại
+  // nút đang chọn để bỏ đạt/không đạt — tiêu chí không bắt buộc phải chấm hết.
+  const setAnswer = (criterionId: string, value: "PASS" | "FAIL" | undefined) => {
     setAnswers((prev) => {
-      const next = { ...prev, [criterionId]: value };
+      const next = { ...prev };
+      if (value === undefined) {
+        delete next[criterionId];
+      } else {
+        next[criterionId] = value;
+      }
       saveDraft({ answers: next, notes, bonusPoints, bonusNote, penaltyPoints, penaltyNote });
       return next;
     });
@@ -202,13 +209,22 @@ export function RoundScoringScreen({
   };
 
   const answeredCount = criteria.filter((c) => answers[c.criterionId] !== undefined).length;
-  const isComplete = answeredCount === criteria.length && criteria.length > 0;
+  // Không bắt buộc chấm hết mọi tiêu chí hiển thị — chỉ cần chấm ít nhất 1
+  // tiêu chí là được nộp (1 Đợt chấm có thể chỉ áp dụng 1 phần bộ tiêu chí,
+  // và trong phần đó vẫn có thể bỏ trống tiêu chí không quan sát được).
+  const isComplete = answeredCount > 0;
 
   const criteriaScore = criteria.reduce((sum, c) => {
     const a = answers[c.criterionId];
     return sum + (a === "PASS" ? c.maxScore : 0);
   }, 0);
-  const maxPossibleScore = criteria.reduce((sum, c) => sum + c.maxScore, 0);
+  // Chỉ tính maxPossibleScore trên các tiêu chí ĐÃ CHẤM — khớp với
+  // buildCriteriaSnapshot (tiêu chí bỏ trống bị loại khỏi snapshot hoàn
+  // toàn, không cộng cũng không tính vào tổng tối đa).
+  const maxPossibleScore = criteria.reduce(
+    (sum, c) => (answers[c.criterionId] !== undefined ? sum + c.maxScore : sum),
+    0,
+  );
   const finalScore = criteriaScore + bonusPoints - penaltyPoints;
 
   const handleSubmit = () => {
@@ -388,10 +404,10 @@ export function RoundScoringScreen({
                 <span
                   className={cn(
                     "shrink-0 font-semibold",
-                    a === "PASS" ? "text-success" : "text-warning",
+                    a === "PASS" ? "text-success" : a === "FAIL" ? "text-warning" : "text-muted-foreground",
                   )}
                 >
-                  {a === "PASS" ? "ĐẠT" : "KHÔNG ĐẠT"} · +{a === "PASS" ? c.maxScore : 0}
+                  {a === "PASS" ? `ĐẠT · +${c.maxScore}` : a === "FAIL" ? "KHÔNG ĐẠT · +0" : "Chưa chấm"}
                 </span>
               </div>
             );
@@ -556,7 +572,7 @@ export function RoundScoringScreen({
         </div>
         {!isComplete && (
           <p className="mt-1 text-center text-xs text-muted-foreground">
-            Bạn chưa chấm đủ tất cả tiêu chí.
+            Chọn ít nhất 1 tiêu chí trước khi tiếp tục.
           </p>
         )}
       </div>

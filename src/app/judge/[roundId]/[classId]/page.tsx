@@ -10,7 +10,7 @@ import {
   criterionAppliesToGrade,
 } from "@/lib/google/sheets";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
-import { checkRoundEligibility } from "@/lib/rounds/eligibility";
+import { checkRoundEligibility, isCriterionInRoundScope } from "@/lib/rounds/eligibility";
 import { RoundScoringScreen } from "@/components/scoring/RoundScoringScreen";
 
 export default async function RoundScoringPage({
@@ -41,7 +41,7 @@ export default async function RoundScoringPage({
 
   const allCriteria = await getCriteria({ activeOnly: true });
   const criteria = allCriteria
-    .filter((c) => criterionAppliesToGrade(c, klass.grade))
+    .filter((c) => criterionAppliesToGrade(c, klass.grade) && isCriterionInRoundScope(round, c.criterionId))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (

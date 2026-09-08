@@ -3,10 +3,12 @@ import {
   checkRoundEligibility,
   isClassInRoundScope,
   isClassInAssignmentScope,
+  isCriterionInRoundScope,
+  criterionAppliesToGrade,
   eligibilityMessage,
 } from "@/lib/rounds/eligibility";
 import { zonedTimeToUtc } from "@/lib/timezone/timezone";
-import type { ScoringRound, ScoringRoundAssignment } from "@/types";
+import type { CriterionConfig, ScoringRound, ScoringRoundAssignment } from "@/types";
 
 function makeRound(overrides: Partial<ScoringRound> = {}): ScoringRound {
   return {
@@ -19,6 +21,7 @@ function makeRound(overrides: Partial<ScoringRound> = {}): ScoringRound {
     status: "OPEN",
     gradeIds: [],
     classIds: [],
+    criterionIds: [],
     createdBy: "admin@fpt.edu.vn",
     createdAt: "",
     updatedAt: "",
@@ -241,5 +244,45 @@ describe("eligibilityMessage", () => {
     expect(eligibilityMessage("OUT_OF_ASSIGNMENT_SCOPE", "10A5")).toBe(
       "Bạn không được phân công chấm lớp 10A5 trong Đợt chấm này.",
     );
+  });
+});
+
+function criterion(overrides: Partial<CriterionConfig> = {}): CriterionConfig {
+  return {
+    criterionId: "C1",
+    criterionNumber: 1,
+    criterionName: "Vệ sinh lớp",
+    description: "",
+    active: true,
+    sortOrder: 1,
+    needsReview: false,
+    maxScore: 1,
+    scoringType: "PASS_FAIL",
+    gradeIds: [],
+    createdAt: "",
+    updatedAt: "",
+    ...overrides,
+  };
+}
+
+describe("isCriterionInRoundScope — 1 Đợt chấm có thể chỉ áp dụng 1 phần bộ tiêu chí", () => {
+  it("criterionIds rỗng -> áp dụng mọi tiêu chí (không thu hẹp)", () => {
+    expect(isCriterionInRoundScope({ criterionIds: [] }, "C1")).toBe(true);
+    expect(isCriterionInRoundScope({ criterionIds: [] }, "C99")).toBe(true);
+  });
+  it("criterionIds có giá trị -> chỉ đúng tiêu chí trong danh sách mới hợp lệ", () => {
+    const round = { criterionIds: ["C1", "C2"] };
+    expect(isCriterionInRoundScope(round, "C1")).toBe(true);
+    expect(isCriterionInRoundScope(round, "C3")).toBe(false);
+  });
+});
+
+describe("criterionAppliesToGrade", () => {
+  it("gradeIds rỗng -> áp dụng mọi khối", () => {
+    expect(criterionAppliesToGrade(criterion({ gradeIds: [] }), "10")).toBe(true);
+  });
+  it("gradeIds có giá trị -> chỉ đúng khối trong danh sách", () => {
+    expect(criterionAppliesToGrade(criterion({ gradeIds: ["11", "12"] }), "10")).toBe(false);
+    expect(criterionAppliesToGrade(criterion({ gradeIds: ["11", "12"] }), "11")).toBe(true);
   });
 });

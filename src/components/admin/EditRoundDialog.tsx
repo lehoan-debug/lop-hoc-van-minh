@@ -25,17 +25,20 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { formatInVN } from "@/lib/timezone/timezone";
 import { updateRoundAction } from "@/lib/actions/roundActions";
-import type { ClassConfig, EffectiveRoundStatus, Grade, ScoringRound, Session_ } from "@/types";
+import { criterionAppliesToGrade } from "@/lib/rounds/eligibility";
+import type { ClassConfig, CriterionConfig, EffectiveRoundStatus, Grade, ScoringRound, Session_ } from "@/types";
 
 export function EditRoundDialog({
   round,
   effectiveStatus,
   classes,
+  criteria,
   onClose,
 }: {
   round: ScoringRound;
   effectiveStatus: EffectiveRoundStatus;
   classes: ClassConfig[];
+  criteria: CriterionConfig[];
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -48,6 +51,7 @@ export function EditRoundDialog({
   const [endTime, setEndTime] = React.useState(() => formatInVN(round.endsAt, "HH:mm"));
   const [grades, setGrades] = React.useState<Grade[]>(round.gradeIds);
   const [classIds, setClassIds] = React.useState<string[]>(round.classIds);
+  const [criterionIds, setCriterionIds] = React.useState<string[]>(round.criterionIds);
   const [confirming, setConfirming] = React.useState(false);
 
   const toggleGrade = (g: Grade) => {
@@ -56,8 +60,17 @@ export function EditRoundDialog({
   const toggleClass = (classId: string) => {
     setClassIds((prev) => (prev.includes(classId) ? prev.filter((x) => x !== classId) : [...prev, classId]));
   };
+  const toggleCriterion = (criterionId: string) => {
+    setCriterionIds((prev) =>
+      prev.includes(criterionId) ? prev.filter((x) => x !== criterionId) : [...prev, criterionId],
+    );
+  };
 
   const classesForGrades = grades.length === 0 ? classes : classes.filter((c) => grades.includes(c.grade));
+  const criteriaForGrades =
+    grades.length === 0
+      ? criteria
+      : criteria.filter((c) => grades.some((g) => criterionAppliesToGrade(c, g)));
   const isRunning = effectiveStatus === "OPEN" || effectiveStatus === "SCHEDULED";
 
   const doSave = () => {
@@ -72,6 +85,7 @@ export function EditRoundDialog({
         endTime,
         gradeIds: grades,
         classIds,
+        criterionIds,
       });
       if (result.ok) {
         toast({ variant: "success", title: "Đã cập nhật đợt chấm." });
@@ -184,6 +198,37 @@ export function EditRoundDialog({
                   {c.className}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Tiêu chí áp dụng (bỏ trống = tất cả tiêu chí phù hợp khối)</Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Vd: đợt chấm này chỉ chấm 8/11 tiêu chí thì chỉ tick 8 tiêu chí đó.
+            </p>
+            <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+              {criteriaForGrades.map((c) => (
+                <button
+                  key={c.criterionId}
+                  type="button"
+                  onClick={() => toggleCriterion(c.criterionId)}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs",
+                    criterionIds.includes(c.criterionId) ? "bg-primary/10 text-primary" : "hover:bg-accent",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border",
+                      criterionIds.includes(c.criterionId) ? "border-primary bg-primary" : "border-border",
+                    )}
+                  />
+                  {c.criterionName}
+                </button>
+              ))}
+              {criteriaForGrades.length === 0 && (
+                <p className="px-2 py-1 text-xs text-muted-foreground">Không có tiêu chí nào.</p>
+              )}
             </div>
           </div>
         </div>

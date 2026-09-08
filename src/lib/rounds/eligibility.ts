@@ -1,5 +1,12 @@
-import type { Grade, ScoringRound, ScoringRoundAssignment } from "@/types";
+import type { CriterionConfig, Grade, ScoringRound, ScoringRoundAssignment } from "@/types";
 import { getEffectiveRoundStatus } from "./roundStatus";
+
+/** Tiêu chí áp dụng cho 1 khối: `gradeIds` rỗng = áp dụng mọi khối (đúng
+ * hành vi V1). Hàm thuần (không đụng Google Sheets) — dùng được cả ở Client
+ * Component (form chọn tiêu chí khi tạo/sửa Đợt chấm) lẫn Server. */
+export function criterionAppliesToGrade(criterion: CriterionConfig, grade: Grade): boolean {
+  return criterion.gradeIds.length === 0 || criterion.gradeIds.includes(grade);
+}
 
 /** Lớp có nằm trong phạm vi khối/lớp của Đợt chấm không.
  * `classIds` rỗng -> xét theo `gradeIds` (rỗng -> mọi khối). */
@@ -11,6 +18,16 @@ export function isClassInRoundScope(
   if (round.classIds.length > 0) return round.classIds.includes(classId);
   if (round.gradeIds.length > 0) return round.gradeIds.includes(grade);
   return true;
+}
+
+/** Tiêu chí có nằm trong phạm vi Đợt chấm này không — cho phép 1 Đợt chấm
+ * chỉ áp dụng 1 phần bộ tiêu chí (vd. 8/11), không nhất thiết toàn bộ.
+ * `criterionIds` rỗng -> áp dụng mọi tiêu chí (không thu hẹp). */
+export function isCriterionInRoundScope(
+  round: Pick<ScoringRound, "criterionIds">,
+  criterionId: string,
+): boolean {
+  return round.criterionIds.length === 0 || round.criterionIds.includes(criterionId);
 }
 
 /** Lớp có nằm trong phạm vi ĐƯỢC PHÂN CÔNG RIÊNG cho người này không.

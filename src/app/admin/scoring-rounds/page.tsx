@@ -4,16 +4,18 @@ import {
   getRoundAssignments,
   getScores,
   getUsers,
+  getCriteria,
 } from "@/lib/google/sheets";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
 import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
 import { ScoringRoundsPageClient, type RoundListItem } from "@/components/admin/ScoringRoundsPageClient";
 
 export default async function AdminScoringRoundsPage() {
-  const [rounds, classes, users] = await Promise.all([
+  const [rounds, classes, users, criteria] = await Promise.all([
     getScoringRounds(),
     getClasses({ activeOnly: true }),
     getUsers(),
+    getCriteria({ activeOnly: true }),
   ]);
   const judges = users.filter(
     (u) => u.active && u.roles.some((r) => r === "JUDGE" || r === "ADMIN" || r === "SUPER_ADMIN"),
@@ -53,7 +55,7 @@ export default async function AdminScoringRoundsPage() {
   return (
     <div>
       <h1 className="mb-4 text-xl font-bold">Đợt chấm</h1>
-      <ScoringRoundsPageClient items={items} classes={classes} judges={judges} />
+      <ScoringRoundsPageClient items={items} classes={classes} judges={judges} criteria={criteria} />
     </div>
   );
 }

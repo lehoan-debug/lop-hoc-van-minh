@@ -145,6 +145,8 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     "updatedAt",
     "manuallyLockedAt",
     "manuallyLockedBy",
+    // V2 — thêm cuối, xem yêu cầu "1 đợt chấm có thể chỉ chấm 1 phần tiêu chí"
+    "criterionIdsJson",
   ],
   // V2 — sheet mới, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.5
   [SHEET_NAMES.SCORING_ROUND_ASSIGNMENTS]: [
