@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { School, Trophy, Award, ThumbsDown, ChevronDown } from "lucide-react";
+import Image from "next/image";
+import { Trophy, Award, ThumbsDown, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
@@ -52,7 +53,7 @@ export function HomeroomDashboard({
   return (
     <div className="mx-auto max-w-lg p-4 pb-8">
       <div className="mb-4 flex items-center gap-2">
-        <School className="h-5 w-5 text-primary" />
+        <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
         <h1 className="text-lg font-bold">Lớp chủ nhiệm</h1>
       </div>
 

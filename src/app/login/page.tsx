@@ -2,8 +2,9 @@ import { auth } from "@/lib/auth/auth";
 import { GoogleSignInButton } from "@/components/layout/GoogleSignInButton";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShieldAlert, GraduationCap } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 
 export default async function LoginPage({
   searchParams,
@@ -23,9 +24,14 @@ export default async function LoginPage({
     <main className="flex min-h-dvh flex-col items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <GraduationCap className="h-7 w-7 text-primary" />
-          </div>
+          <Image
+            src="/logo-fpt-schools.png"
+            alt="FPT Schools"
+            width={220}
+            height={96}
+            priority
+            className="mb-3 h-auto w-40"
+          />
           <CardTitle className="text-xl">Lớp học Văn minh</CardTitle>
           <CardDescription>Trường THPT FPT Đà Nẵng</CardDescription>
         </CardHeader>
