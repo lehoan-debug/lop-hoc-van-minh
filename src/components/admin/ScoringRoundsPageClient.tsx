@@ -3,14 +3,16 @@
 import * as React from "react";
 import { useTransition } from "react";
 import Link from "next/link";
-import { Plus, Lock, Settings, Eye, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Lock, Settings, Eye, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { ROUND_STATUS_LABEL } from "@/lib/rounds/roundStatus";
-import { lockRoundAction } from "@/lib/actions/roundActions";
+import { lockRoundAction, deleteRoundAction } from "@/lib/actions/roundActions";
 import { CreateRoundDialog } from "@/components/admin/CreateRoundDialog";
+import { DeleteRoundConfirmDialog } from "@/components/admin/DeleteRoundConfirmDialog";
 import type { AppUser, ClassConfig, EffectiveRoundStatus, ScoringRound, Session_ } from "@/types";
 
 export interface RoundListItem {
@@ -72,7 +74,9 @@ export function ScoringRoundsPageClient({
 
 function RoundCard({ item }: { item: RoundListItem }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
   const { round, effectiveStatus, assignedJudgeCount, totalClasses, assignedClassCount, doneCount } = item;
   const unassignedCount = totalClasses - assignedClassCount;
 
@@ -81,6 +85,19 @@ function RoundCard({ item }: { item: RoundListItem }) {
       const result = await lockRoundAction(round.roundId);
       if (result.ok) {
         toast({ variant: "success", title: "Đã khoá đợt chấm." });
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    startTransition(async () => {
+      const result = await deleteRoundAction(round.roundId);
+      if (result.ok) {
+        toast({ variant: "success", title: "Đã xoá đợt chấm." });
+        setDeleteConfirm(false);
+        router.refresh();
       } else {
         toast({ variant: "error", title: result.error });
       }
@@ -139,7 +156,23 @@ function RoundCard({ item }: { item: RoundListItem }) {
             Khoá
           </Button>
         )}
+        {effectiveStatus !== "CANCELLED" && (
+          <Button size="sm" variant="outline" onClick={() => setDeleteConfirm(true)} disabled={isPending}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
+
+      {deleteConfirm && (
+        <DeleteRoundConfirmDialog
+          roundTitle={round.title}
+          doneCount={doneCount}
+          assignedJudgeCount={assignedJudgeCount}
+          onCancel={() => setDeleteConfirm(false)}
+          onConfirm={handleDelete}
+          isPending={isPending}
+        />
+      )}
     </div>
   );
 }

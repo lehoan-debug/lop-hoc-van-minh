@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,9 +29,10 @@ import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveRoundStatus, ROUND_STATUS_LABEL, msUntilRoundEnds } from "@/lib/rounds/roundStatus";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
-import { lockRoundAction, reopenRoundAction } from "@/lib/actions/roundActions";
+import { lockRoundAction, reopenRoundAction, deleteRoundAction } from "@/lib/actions/roundActions";
 import { AssignmentPanel } from "@/components/admin/AssignmentPanel";
 import { EditRoundDialog } from "@/components/admin/EditRoundDialog";
+import { DeleteRoundConfirmDialog } from "@/components/admin/DeleteRoundConfirmDialog";
 import type {
   AppUser,
   ClassConfig,
@@ -68,6 +70,7 @@ export function RoundDetailClient({
   const [unassignedOnly, setUnassignedOnly] = React.useState(false);
   const [reopenConfirm, setReopenConfirm] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
 
   const effectiveStatus = getEffectiveRoundStatus(round, now);
 
@@ -125,6 +128,19 @@ export function RoundDetailClient({
     });
   };
 
+  const handleDelete = () => {
+    startTransition(async () => {
+      const result = await deleteRoundAction(round.roundId);
+      if (result.ok) {
+        toast({ variant: "success", title: "Đã xoá đợt chấm." });
+        setDeleteConfirm(false);
+        router.refresh();
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
+
   return (
     <div>
       <button
@@ -175,6 +191,12 @@ export function RoundDetailClient({
             <Button variant="outline" size="sm" onClick={() => setReopenConfirm(true)} disabled={isPending}>
               <Unlock className="h-3.5 w-3.5" />
               Mở lại
+            </Button>
+          )}
+          {effectiveStatus !== "CANCELLED" && (
+            <Button variant="destructive" size="sm" onClick={() => setDeleteConfirm(true)} disabled={isPending}>
+              <Trash2 className="h-3.5 w-3.5" />
+              Xoá
             </Button>
           )}
         </div>
@@ -312,6 +334,17 @@ export function RoundDetailClient({
         <ReopenConfirmDialog
           onCancel={() => setReopenConfirm(false)}
           onConfirm={handleReopen}
+          isPending={isPending}
+        />
+      )}
+
+      {deleteConfirm && (
+        <DeleteRoundConfirmDialog
+          roundTitle={round.title}
+          doneCount={doneCount}
+          assignedJudgeCount={assignments.length}
+          onCancel={() => setDeleteConfirm(false)}
+          onConfirm={handleDelete}
           isPending={isPending}
         />
       )}

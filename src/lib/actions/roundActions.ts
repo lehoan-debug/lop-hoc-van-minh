@@ -197,23 +197,28 @@ export async function reopenRoundAction(
   }
 }
 
-export async function cancelRoundAction(roundId: string): Promise<ActionResult> {
+/** "Xoá" đợt chấm — thực chất là soft-delete (đặt status=CANCELLED), đúng
+ * nguyên tắc xuyên suốt app: KHÔNG xoá cứng dữ liệu. Score/Assignment đã có
+ * của đợt vẫn giữ nguyên trong Sheet để tra cứu/audit; đợt chỉ không còn
+ * hiển thị để chấm/sử dụng được nữa (CANCELLED chặn mọi submit — xem
+ * checkRoundEligibility). */
+export async function deleteRoundAction(roundId: string): Promise<ActionResult> {
   try {
     const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
-    if (!canManageRounds(user)) return fail("Bạn không có quyền huỷ Đợt chấm.");
+    if (!canManageRounds(user)) return fail("Bạn không có quyền xoá Đợt chấm.");
     const ok = await cancelScoringRound(roundId);
     if (!ok) return fail("Không tìm thấy Đợt chấm.");
 
     await appendAuditLog({
       userEmail: user.email,
       userName: user.name,
-      action: "UPDATE_SCORING_ROUND",
+      action: "DELETE_SCORING_ROUND",
       entityType: "ScoringRound",
       entityId: roundId,
-      details: { status: "CANCELLED" },
     });
 
     revalidatePath("/admin/scoring-rounds");
+    revalidatePath(`/admin/scoring-rounds/${roundId}`);
     revalidatePath("/judge");
     return { ok: true, data: undefined };
   } catch (e) {
