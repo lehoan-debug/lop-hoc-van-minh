@@ -21,7 +21,7 @@ import {
   appendAuditLog,
 } from "@/lib/google/sheets";
 import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
-import { randomlyDistributeClasses } from "@/lib/rounds/randomAssign";
+import { distributeClassesSequentially } from "@/lib/rounds/sequentialAssign";
 import { zonedTimeToUtc } from "@/lib/timezone/timezone";
 import { z } from "zod";
 import { gradeSchema, sessionSchema } from "@/lib/validation/schemas";
@@ -406,21 +406,29 @@ export async function setClassAssigneesAction(raw: unknown): Promise<ActionResul
 const randomAssignSchema = z.object({
   roundId: z.string().min(1),
   judgeEmails: z.array(z.string().email()).min(1, "Chọn ít nhất 1 người chấm"),
-  gradeFilter: gradeSchema.optional(),
+  // Bắt buộc đúng 1 khối — 1 Giám khảo không được chấm 2 khối khác nhau
+  // trong cùng 1 lần chia, nên không cho gộp "Tất cả khối" ở đây.
+  gradeFilter: gradeSchema,
+  // "auto" = chia đều (số lớp/người tự tính); số cụ thể = cố định số
+  // lớp/người do Admin chọn — xem distributeClassesSequentially.
+  classesPerJudge: z.union([z.literal("auto"), z.number().int().min(1).max(50)]),
 });
 
 export interface RandomAssignResult {
   assignedClassCount: number;
   perJudge: { email: string; count: number }[];
+  /** Số lớp còn dư không đủ người nhận (chỉ ở chế độ số lớp/người cố định). */
+  unassignedRemainingCount: number;
 }
 
 /**
- * Phân công NGẪU NHIÊN + ĐỀU: chia các lớp thuộc phạm vi Round (lọc thêm
- * theo khối nếu có) mà HIỆN CHƯA có ai phụ trách cho những người chấm được
- * chọn — mỗi người số lớp chênh lệch nhau tối đa 1, lớp nào về tay ai thì
- * ngẫu nhiên. CHỈ cộng thêm vào phân công hiện có (không đụng lớp đã có
- * người phụ trách), tính toán ở SERVER (không tin danh sách lớp/số lượng từ
- * client) — xem randomlyDistributeClasses.
+ * Phân công theo LỚP LIÊN TIẾP: chia các lớp thuộc phạm vi Round + ĐÚNG 1
+ * khối đã chọn, mà HIỆN CHƯA có ai phụ trách, cho những người chấm được chọn
+ * — mỗi người nhận 1 khối lớp LIÊN TIẾP theo đúng thứ tự (vd. 10A1-10A3),
+ * không bao giờ ngắt quãng, không bao giờ 1 người dính 2 khối. CHỈ cộng thêm
+ * vào phân công hiện có (không đụng lớp đã có người phụ trách), tính toán ở
+ * SERVER (không tin danh sách lớp/thứ tự từ client) — xem
+ * distributeClassesSequentially.
  */
 export async function randomAssignAction(
   raw: unknown,
@@ -430,7 +438,7 @@ export async function randomAssignAction(
     if (!canManageRounds(user)) return fail("Bạn không có quyền phân công người chấm.");
     const parsed = randomAssignSchema.safeParse(raw);
     if (!parsed.success) return fail("Dữ liệu không hợp lệ.");
-    const { roundId, judgeEmails, gradeFilter } = parsed.data;
+    const { roundId, judgeEmails, gradeFilter, classesPerJudge } = parsed.data;
 
     const round = await getScoringRound(roundId);
     if (!round) return fail("Không tìm thấy Đợt chấm.");
@@ -440,23 +448,29 @@ export async function randomAssignAction(
       getRoundAssignments(roundId),
     ]);
 
-    const unassignedClassIds = allClasses
+    const unassignedClasses = allClasses
       .filter((c) => isClassInRoundScope(round, c.classId, c.grade))
-      .filter((c) => !gradeFilter || c.grade === gradeFilter)
+      .filter((c) => c.grade === gradeFilter)
       .filter((c) => !assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)))
-      .map((c) => c.classId);
+      .sort((a, b) => a.sortOrder - b.sortOrder);
 
-    if (unassignedClassIds.length === 0) {
-      return fail("Không còn lớp nào chưa được phân công trong phạm vi đã chọn.");
+    if (unassignedClasses.length === 0) {
+      return fail("Không còn lớp nào chưa được phân công trong khối đã chọn.");
     }
 
-    const distribution = randomlyDistributeClasses(unassignedClassIds, judgeEmails);
-    await bulkImportAssignments(roundId, distribution, user.email);
+    const sortedClassIds = unassignedClasses.map((c) => c.classId);
+    const { byJudge, unassignedClassIds: leftover } = distributeClassesSequentially(
+      sortedClassIds,
+      judgeEmails,
+      classesPerJudge,
+    );
+    await bulkImportAssignments(roundId, byJudge, user.email);
 
     const perJudge = judgeEmails.map((email) => ({
       email,
-      count: distribution.get(email)?.length ?? 0,
+      count: byJudge.get(email)?.length ?? 0,
     }));
+    const assignedClassCount = sortedClassIds.length - leftover.length;
 
     await appendAuditLog({
       userEmail: user.email,
@@ -464,13 +478,23 @@ export async function randomAssignAction(
       action: "RANDOM_ASSIGN_CLASSES",
       entityType: "ScoringRoundAssignment",
       entityId: roundId,
-      details: { judgeEmails, gradeFilter, assignedClassCount: unassignedClassIds.length, perJudge },
+      details: {
+        judgeEmails,
+        gradeFilter,
+        classesPerJudge,
+        assignedClassCount,
+        unassignedRemainingCount: leftover.length,
+        perJudge,
+      },
     });
 
     revalidatePath(`/admin/scoring-rounds/${roundId}`);
     revalidatePath("/admin/scoring-rounds");
     revalidatePath("/judge");
-    return { ok: true, data: { assignedClassCount: unassignedClassIds.length, perJudge } };
+    return {
+      ok: true,
+      data: { assignedClassCount, perJudge, unassignedRemainingCount: leftover.length },
+    };
   } catch (e) {
     return handleKnownError(e);
   }

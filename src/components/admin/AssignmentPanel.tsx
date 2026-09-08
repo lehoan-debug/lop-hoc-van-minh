@@ -16,7 +16,7 @@ import {
   Download,
   CheckCircle2,
   XCircle,
-  Shuffle,
+  ListOrdered,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import {
   randomAssignAction,
 } from "@/lib/actions/roundActions";
 import { isClassInAssignmentScope } from "@/lib/rounds/eligibility";
+import { distributeClassesSequentially } from "@/lib/rounds/sequentialAssign";
 import type { AppUser, ClassConfig, Grade, ScoringRoundAssignment } from "@/types";
 
 const GRADES: Grade[] = ["10", "11", "12"];
@@ -87,8 +88,8 @@ export function AssignmentPanel({
               tab === "random" ? "bg-primary text-primary-foreground" : "text-muted-foreground",
             )}
           >
-            <Shuffle className="h-3.5 w-3.5" />
-            Ngẫu nhiên
+            <ListOrdered className="h-3.5 w-3.5" />
+            Chia liên tiếp
           </button>
           <button
             onClick={() => setTab("excel")}
@@ -543,7 +544,9 @@ function ByClassTab({
   );
 }
 
-// ---------- Tab: Ngẫu nhiên ----------
+// ---------- Tab: Chia liên tiếp theo khối ----------
+
+type SequentialMode = "auto" | "fixed";
 
 function RandomAssignTab({
   roundId,
@@ -562,15 +565,22 @@ function RandomAssignTab({
 }) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
-  const [gradeFilter, setGradeFilter] = React.useState<Grade | "ALL">("ALL");
+  const [gradeFilter, setGradeFilter] = React.useState<Grade | null>(null);
   const [query, setQuery] = React.useState("");
   const [selectedJudges, setSelectedJudges] = React.useState<Set<string>>(new Set());
+  const [mode, setMode] = React.useState<SequentialMode>("auto");
+  const [fixedCount, setFixedCount] = React.useState(3);
 
-  const classesInFilter =
-    gradeFilter === "ALL" ? classes : classes.filter((c) => c.grade === gradeFilter);
-  const unassignedClasses = classesInFilter.filter(
-    (c) => !assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)),
-  );
+  const unassignedClasses = React.useMemo(() => {
+    if (!gradeFilter) return [];
+    return classes
+      .filter((c) => c.grade === gradeFilter)
+      .filter((c) => !assignments.some((a) => isClassInAssignmentScope(a, c.classId, c.grade)))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [classes, assignments, gradeFilter]);
+
+  const classNameById = React.useMemo(() => new Map(classes.map((c) => [c.classId, c.className])), [classes]);
+  const judgeByEmail = React.useMemo(() => new Map(judges.map((j) => [j.email, j])), [judges]);
 
   const filteredJudges = judges.filter(
     (j) =>
@@ -587,22 +597,44 @@ function RandomAssignTab({
     });
   };
 
-  const selectedCount = selectedJudges.size;
-  const perJudgeMin = selectedCount > 0 ? Math.floor(unassignedClasses.length / selectedCount) : 0;
-  const remainder = selectedCount > 0 ? unassignedClasses.length % selectedCount : 0;
+  // Xếp theo tên A-Z để có thứ tự CỐ ĐỊNH, dễ giải thích (người đầu tiên
+  // theo tên luôn nhận các lớp đầu tiên theo thứ tự sortOrder).
+  const orderedJudgeEmails = React.useMemo(
+    () =>
+      judges
+        .filter((j) => selectedJudges.has(j.email))
+        .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+        .map((j) => j.email),
+    [judges, selectedJudges],
+  );
+  const selectedCount = orderedJudgeEmails.length;
+
+  const preview = React.useMemo(() => {
+    if (selectedCount === 0 || unassignedClasses.length === 0) return null;
+    return distributeClassesSequentially(
+      unassignedClasses.map((c) => c.classId),
+      orderedJudgeEmails,
+      mode === "auto" ? "auto" : fixedCount,
+    );
+  }, [unassignedClasses, orderedJudgeEmails, mode, fixedCount, selectedCount]);
 
   const handleRun = () => {
-    if (selectedCount === 0 || unassignedClasses.length === 0) return;
+    if (!gradeFilter || selectedCount === 0 || unassignedClasses.length === 0) return;
     startTransition(async () => {
       const result = await randomAssignAction({
         roundId,
-        judgeEmails: Array.from(selectedJudges),
-        gradeFilter: gradeFilter === "ALL" ? undefined : gradeFilter,
+        judgeEmails: orderedJudgeEmails,
+        gradeFilter,
+        classesPerJudge: mode === "auto" ? "auto" : fixedCount,
       });
       if (result.ok) {
+        const extra =
+          result.data.unassignedRemainingCount > 0
+            ? ` Còn ${result.data.unassignedRemainingCount} lớp chưa đủ người nhận.`
+            : "";
         toast({
           variant: "success",
-          title: `Đã phân công ngẫu nhiên ${result.data.assignedClassCount} lớp cho ${selectedCount} người.`,
+          title: `Đã phân công ${result.data.assignedClassCount} lớp cho ${selectedCount} người.${extra}`,
         });
         setSelectedJudges(new Set());
         onChanged();
@@ -615,91 +647,148 @@ function RandomAssignTab({
   return (
     <div>
       <p className="mb-3 text-sm text-muted-foreground">
-        Chia ngẫu nhiên và đều các lớp <strong>CHƯA có ai phụ trách</strong> cho những người chấm
-        được chọn bên dưới — không đụng tới các lớp đã có người phân công.
+        Chia các lớp <strong>CHƯA có ai phụ trách</strong> thành từng khối LIÊN TIẾP theo đúng thứ
+        tự (vd. 10A1–10A3, 10A4–10A6...) cho từng người — không ngắt quãng, không đụng lớp đã có
+        người phân công. Phải chọn đúng 1 khối vì 1 người không được chấm 2 khối khác nhau.
       </p>
 
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={() => setGradeFilter("ALL")}
-          className={cn(
-            "rounded-md border px-2.5 py-1 text-xs font-medium",
-            gradeFilter === "ALL" ? "border-primary bg-primary/10 text-primary" : "border-border",
-          )}
-        >
-          Tất cả khối
-        </button>
-        {GRADES.map((g) => (
-          <button
-            key={g}
-            onClick={() => setGradeFilter(g)}
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-xs font-medium",
-              gradeFilter === g ? "border-primary bg-primary/10 text-primary" : "border-border",
-            )}
-          >
-            Khối {g}
-          </button>
-        ))}
-      </div>
-
-      <div className="relative mb-2">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Tìm người chấm theo tên/email"
-          className="pl-8"
-        />
-      </div>
-
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-[var(--radius)] border border-border p-2">
-        {filteredJudges.map((j) => {
-          const isChecked = selectedJudges.has(j.email);
-          return (
+      <div className="mb-3">
+        <label className="text-xs font-medium text-muted-foreground">Khối (bắt buộc chọn 1)</label>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {GRADES.map((g) => (
             <button
-              key={j.email}
-              type="button"
-              onClick={() => toggleJudge(j.email)}
+              key={g}
+              onClick={() => setGradeFilter(g)}
               className={cn(
-                "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
-                isChecked ? "bg-primary/10 text-primary" : "hover:bg-accent",
+                "rounded-md border px-2.5 py-1 text-xs font-medium",
+                gradeFilter === g ? "border-primary bg-primary/10 text-primary" : "border-border",
               )}
             >
-              <span>{j.name || j.email}</span>
-              <span className="text-xs text-muted-foreground">{j.email}</span>
+              Khối {g}
             </button>
-          );
-        })}
-        {filteredJudges.length === 0 && (
-          <p className="px-2 py-2 text-sm text-muted-foreground">Không tìm thấy.</p>
-        )}
+          ))}
+        </div>
       </div>
 
-      <div className="mt-3 rounded-md bg-primary/5 px-3 py-2 text-xs text-primary">
-        {unassignedClasses.length === 0 ? (
-          <span>Không còn lớp nào chưa phân công trong phạm vi đã chọn.</span>
-        ) : selectedCount === 0 ? (
-          <span>{unassignedClasses.length} lớp chưa phân công — chọn người chấm để chia.</span>
-        ) : (
-          <span>
-            {unassignedClasses.length} lớp chưa phân công sẽ chia ngẫu nhiên cho {selectedCount}{" "}
-            người, mỗi người khoảng {perJudgeMin}
-            {remainder > 0 ? `–${perJudgeMin + 1}` : ""} lớp.
-          </span>
-        )}
-      </div>
+      {gradeFilter && (
+        <>
+          <div className="mb-3">
+            <label className="text-xs font-medium text-muted-foreground">Cách chia</label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setMode("auto")}
+                className={cn(
+                  "rounded-md border px-2.5 py-1 text-xs font-medium",
+                  mode === "auto" ? "border-primary bg-primary/10 text-primary" : "border-border",
+                )}
+              >
+                Chia đều
+              </button>
+              <button
+                onClick={() => setMode("fixed")}
+                className={cn(
+                  "rounded-md border px-2.5 py-1 text-xs font-medium",
+                  mode === "fixed" ? "border-primary bg-primary/10 text-primary" : "border-border",
+                )}
+              >
+                Số lớp/người cố định
+              </button>
+            </div>
+            {mode === "fixed" && (
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={fixedCount}
+                  onChange={(e) => setFixedCount(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-20"
+                />
+                <span className="text-sm text-muted-foreground">lớp/người</span>
+              </div>
+            )}
+          </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <span className="text-xs text-muted-foreground">Đã chọn {selectedCount} người</span>
-        <SaveButton
-          isRoundOpen={isRoundOpen}
-          isPending={isPending}
-          onSave={handleRun}
-          label="Phân công ngẫu nhiên"
-          disabled={selectedCount === 0 || unassignedClasses.length === 0}
-        />
-      </div>
+          <div className="relative mb-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Tìm người chấm theo tên/email"
+              className="pl-8"
+            />
+          </div>
+
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-[var(--radius)] border border-border p-2">
+            {filteredJudges.map((j) => {
+              const isChecked = selectedJudges.has(j.email);
+              return (
+                <button
+                  key={j.email}
+                  type="button"
+                  onClick={() => toggleJudge(j.email)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
+                    isChecked ? "bg-primary/10 text-primary" : "hover:bg-accent",
+                  )}
+                >
+                  <span>{j.name || j.email}</span>
+                  <span className="text-xs text-muted-foreground">{j.email}</span>
+                </button>
+              );
+            })}
+            {filteredJudges.length === 0 && (
+              <p className="px-2 py-2 text-sm text-muted-foreground">Không tìm thấy.</p>
+            )}
+          </div>
+
+          {unassignedClasses.length === 0 && (
+            <p className="mt-3 rounded-md bg-primary/5 px-3 py-2 text-xs text-primary">
+              Không còn lớp nào chưa phân công trong khối {gradeFilter}.
+            </p>
+          )}
+
+          {preview && (
+            <div className="mt-3 space-y-1.5 rounded-[var(--radius)] border border-border p-3">
+              <p className="text-xs font-semibold">
+                Xem trước (thứ tự theo tên A-Z, lớp theo thứ tự {gradeFilter}A1, {gradeFilter}A2...):
+              </p>
+              {orderedJudgeEmails.map((email) => {
+                const classIds = preview.byJudge.get(email) ?? [];
+                const judge = judgeByEmail.get(email);
+                return (
+                  <div key={email} className="flex items-start justify-between gap-3 text-xs">
+                    <span className="shrink-0">{judge?.name || email}</span>
+                    <span className="text-right font-medium">
+                      {classIds.length === 0
+                        ? "— (0 lớp)"
+                        : classIds.map((id) => classNameById.get(id) ?? id).join(", ")}
+                    </span>
+                  </div>
+                );
+              })}
+              {preview.unassignedClassIds.length > 0 && (
+                <p className="mt-1.5 flex items-start gap-1 text-xs text-warning">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                  Chưa đủ người nhận {preview.unassignedClassIds.length} lớp:{" "}
+                  {preview.unassignedClassIds.map((id) => classNameById.get(id) ?? id).join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <span className="text-xs text-muted-foreground">Đã chọn {selectedCount} người</span>
+            <SaveButton
+              isRoundOpen={isRoundOpen}
+              isPending={isPending}
+              onSave={handleRun}
+              label="Áp dụng phân công"
+              disabled={selectedCount === 0 || unassignedClasses.length === 0}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
