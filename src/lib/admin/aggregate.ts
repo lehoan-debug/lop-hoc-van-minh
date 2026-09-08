@@ -4,7 +4,6 @@ import type {
   CriterionConfig,
   Grade,
   ScoreRecord,
-  Session_,
 } from "@/types";
 import {
   calculateDailyScore,
@@ -59,37 +58,29 @@ export function computeDashboardCards(params: {
   };
 }
 
-// ---------- Progress theo lớp (cho 1 ngày) ----------
+// ---------- Tiến độ theo Đợt chấm (thay cho progress theo ngày/buổi cũ —
+// V1 không còn phản ánh đúng thực tế khi chấm điểm đã chuyển sang theo Đợt
+// chấm (V2): 1 lớp "chưa chấm hôm nay" có thể vì chưa tới lượt trong Đợt,
+// không phải vì bị bỏ sót. Xem yêu cầu: dashboard chỉ nên hiện tiến độ THEO
+// ĐỢT CHẤM, không hiện lại theo ngày/buổi thô.) ----------
 
-export interface ClassProgressItem {
-  classId: string;
-  className: string;
-  grade: Grade;
-  scoredMorning: boolean;
-  scoredAfternoon: boolean;
+export interface RoundClassProgress {
+  doneCount: number;
+  totalCount: number;
+  notDoneClasses: ClassConfig[];
 }
 
-export function buildClassProgress(
-  classes: ClassConfig[],
-  scoresOfDate: ScoreRecord[],
-): ClassProgressItem[] {
-  const scoredKeys = new Set(scoresOfDate.map((s) => `${s.classId}__${s.session}`));
-  return classes.map((c) => ({
-    classId: c.classId,
-    className: c.className,
-    grade: c.grade,
-    scoredMorning: scoredKeys.has(`${c.classId}__MORNING`),
-    scoredAfternoon: scoredKeys.has(`${c.classId}__AFTERNOON`),
-  }));
-}
-
-export function getIncompleteClasses(
-  progress: ClassProgressItem[],
-  session: Session_,
-): ClassProgressItem[] {
-  return progress.filter((p) =>
-    session === "MORNING" ? !p.scoredMorning : !p.scoredAfternoon,
-  );
+export function computeRoundClassProgress(
+  classesInRoundScope: ClassConfig[],
+  scoresOfRound: ScoreRecord[],
+): RoundClassProgress {
+  const doneClassIds = new Set(scoresOfRound.map((s) => s.classId));
+  const notDoneClasses = classesInRoundScope.filter((c) => !doneClassIds.has(c.classId));
+  return {
+    doneCount: classesInRoundScope.length - notDoneClasses.length,
+    totalCount: classesInRoundScope.length,
+    notDoneClasses,
+  };
 }
 
 // ---------- Phân tích tiêu chí ----------

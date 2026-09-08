@@ -1,12 +1,13 @@
-import Link from "next/link";
 import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown, FileSpreadsheet } from "lucide-react";
-import { getClasses, getScores, getAdjustments, getUsers } from "@/lib/google/sheets";
+import { getClasses, getScores, getAdjustments, getUsers, getScoringRounds } from "@/lib/google/sheets";
 import { todayVN } from "@/lib/timezone/timezone";
-import { computeDashboardCards, buildClassProgress, getIncompleteClasses } from "@/lib/admin/aggregate";
+import { computeDashboardCards, computeRoundClassProgress } from "@/lib/admin/aggregate";
+import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
+import { isClassInRoundScope } from "@/lib/rounds/eligibility";
 import { DashboardFilters } from "@/components/admin/DashboardFilters";
 import { StatCard } from "@/components/admin/StatCard";
-import { ProgressGrid } from "@/components/admin/ProgressGrid";
-import type { Grade, Session_ } from "@/types";
+import { DashboardRoundsPanel, type DashboardRoundItem } from "@/components/admin/DashboardRoundsPanel";
+import type { Grade } from "@/types";
 
 export default async function AdminDashboardPage({
   searchParams,
@@ -19,13 +20,13 @@ export default async function AdminDashboardPage({
   const classId = sp.classId || undefined;
   const judgeEmail = sp.judgeEmail || undefined;
   const sessionFilter = sp.session === "MORNING" || sp.session === "AFTERNOON" ? sp.session : undefined;
-  const session: Session_ = sessionFilter ?? "MORNING";
 
-  const [allClasses, allJudges, scoresOfDate, adjustmentsOfDate] = await Promise.all([
+  const [allClasses, allJudges, scoresOfDate, adjustmentsOfDate, allRounds] = await Promise.all([
     getClasses({ activeOnly: true }),
     getUsers(),
     getScores({ dateFrom: date, dateTo: date, grade, classId, judgeEmail, session: sessionFilter }),
     getAdjustments({ dateFrom: date, dateTo: date, classId }),
+    getScoringRounds(),
   ]);
 
   const classesInScope = allClasses.filter((c) => !grade || c.grade === grade);
@@ -35,9 +36,29 @@ export default async function AdminDashboardPage({
     adjustmentsInScope: adjustmentsOfDate,
   });
 
-  const progress = buildClassProgress(classesInScope, scoresOfDate);
-  const incomplete = getIncompleteClasses(progress, session).slice(0, 5);
   const judges = allJudges.filter((u) => u.role === "JUDGE");
+
+  // Chỉ hiện Đợt chấm đang mở hoặc sắp diễn ra (OPEN trước, rồi SCHEDULED
+  // theo thời gian gần nhất) — không hiện lại tiến độ theo ngày/buổi thô.
+  const now = new Date();
+  const statusPriority: Record<string, number> = { OPEN: 0, SCHEDULED: 1 };
+  const relevantRounds = allRounds
+    .map((round) => ({ round, effectiveStatus: getEffectiveRoundStatus(round, now) }))
+    .filter((r) => r.effectiveStatus === "OPEN" || r.effectiveStatus === "SCHEDULED")
+    .sort((a, b) => {
+      const p = statusPriority[a.effectiveStatus]! - statusPriority[b.effectiveStatus]!;
+      return p !== 0 ? p : a.round.startsAt.localeCompare(b.round.startsAt);
+    })
+    .slice(0, 5);
+
+  const roundItems: DashboardRoundItem[] = await Promise.all(
+    relevantRounds.map(async ({ round, effectiveStatus }) => {
+      const classesInRoundScope = allClasses.filter((c) => isClassInRoundScope(round, c.classId, c.grade));
+      const scoresOfRound = await getScores({ roundId: round.roundId });
+      const progress = computeRoundClassProgress(classesInRoundScope, scoresOfRound);
+      return { round, effectiveStatus, ...progress };
+    }),
+  );
 
   return (
     <div>
@@ -72,36 +93,9 @@ export default async function AdminDashboardPage({
         <StatCard label="Điểm trừ" value={cards.penaltyTotal} icon={ThumbsDown} tone="destructive" />
       </div>
 
-      {incomplete.length > 0 && (
-        <div className="mt-5 rounded-[var(--radius)] border border-warning/30 bg-warning/5 p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-semibold text-warning">
-              <AlertTriangle className="h-4 w-4" />
-              Chưa hoàn thành — Buổi {session === "MORNING" ? "sáng" : "chiều"}
-            </h2>
-            <Link
-              href={`/admin/results?date=${date}&session=${session}`}
-              className="text-sm font-medium text-primary"
-            >
-              Xem chi tiết
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {incomplete.map((c) => (
-              <span
-                key={c.classId}
-                className="rounded-full bg-card px-3 py-1 text-sm font-medium shadow-sm"
-              >
-                {c.className}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-6 rounded-[var(--radius)] border border-border bg-card p-4">
-        <h2 className="mb-3 font-semibold">Tiến độ chấm điểm theo lớp</h2>
-        <ProgressGrid progress={progress} session={session} />
+      <div className="mt-6">
+        <h2 className="mb-3 font-semibold">Đợt chấm đang diễn ra / sắp tới</h2>
+        <DashboardRoundsPanel items={roundItems} />
       </div>
     </div>
   );
