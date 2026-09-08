@@ -127,6 +127,7 @@ export default async function HomeroomPage({
       bonusTotal={bonusTotal}
       penaltyTotal={penaltyTotal}
       criteria={criteria}
+      userEmail={user.email}
     />
   );
 }

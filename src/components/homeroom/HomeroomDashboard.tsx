@@ -7,6 +7,8 @@ import { Trophy, Award, ThumbsDown, ChevronDown, MessageSquareText, AlertTriangl
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
+import { sendHomeroomReportAction } from "@/lib/actions/emailActions";
+import { SendReportButton } from "@/components/layout/SendReportDialog";
 import type { ClassRankingResult } from "@/lib/ranking/rankClasses";
 import type { ClassDailyScoreSummary, CriterionFailureStat } from "@/lib/admin/aggregate";
 import type {
@@ -34,6 +36,7 @@ export function HomeroomDashboard({
   bonusTotal,
   penaltyTotal,
   criteria,
+  userEmail,
 }: {
   classInfo: ClassConfig;
   myClasses: ClassConfig[];
@@ -50,6 +53,7 @@ export function HomeroomDashboard({
   bonusTotal: number;
   penaltyTotal: number;
   criteria: CriterionConfig[];
+  userEmail: string;
 }) {
   const router = useRouter();
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -60,9 +64,18 @@ export function HomeroomDashboard({
 
   return (
     <div className="mx-auto max-w-lg p-4 pb-8">
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
         <h1 className="text-lg font-bold">Lớp chủ nhiệm</h1>
+      </div>
+
+      <div className="mb-4 flex justify-end">
+        <SendReportButton
+          defaultEmail={userEmail}
+          title={`Gửi báo cáo lớp ${classInfo.className}`}
+          description="Email sẽ gồm điểm hôm nay, xếp hạng tháng (nếu đã xác nhận công thức), điểm cộng/trừ chi tiết và nhận xét của Giám khảo."
+          onSend={(toEmail) => sendHomeroomReportAction({ classId: classInfo.classId, toEmail })}
+        />
       </div>
 
       {myClasses.length > 1 && (

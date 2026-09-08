@@ -1,5 +1,6 @@
 import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown, FileSpreadsheet } from "lucide-react";
 import { getClasses, getScores, getAdjustments, getUsers, getScoringRounds } from "@/lib/google/sheets";
+import { requireUser } from "@/lib/auth/session";
 import { todayVN } from "@/lib/timezone/timezone";
 import { computeDashboardCards, computeRoundClassProgress } from "@/lib/admin/aggregate";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
@@ -7,6 +8,7 @@ import { isClassInRoundScope } from "@/lib/rounds/eligibility";
 import { DashboardFilters } from "@/components/admin/DashboardFilters";
 import { StatCard } from "@/components/admin/StatCard";
 import { DashboardRoundsPanel, type DashboardRoundItem } from "@/components/admin/DashboardRoundsPanel";
+import { AdminSendReportButton } from "@/components/admin/AdminSendReportButton";
 import type { Grade } from "@/types";
 
 export default async function AdminDashboardPage({
@@ -14,6 +16,7 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const user = await requireUser();
   const sp = await searchParams;
   const date = sp.date || todayVN();
   const grade = (sp.grade as Grade | undefined) || undefined;
@@ -64,13 +67,16 @@ export default async function AdminDashboardPage({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold">Tổng quan</h1>
-        <a
-          href={`/api/admin/export/xlsx?date=${date}${grade ? `&grade=${grade}` : ""}${classId ? `&classId=${classId}` : ""}${judgeEmail ? `&judgeEmail=${judgeEmail}` : ""}${sessionFilter ? `&session=${sessionFilter}` : ""}`}
-          className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          Xuất Excel
-        </a>
+        <div className="flex gap-2">
+          <AdminSendReportButton userEmail={user.email} />
+          <a
+            href={`/api/admin/export/xlsx?date=${date}${grade ? `&grade=${grade}` : ""}${classId ? `&classId=${classId}` : ""}${judgeEmail ? `&judgeEmail=${judgeEmail}` : ""}${sessionFilter ? `&session=${sessionFilter}` : ""}`}
+            className="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Xuất Excel
+          </a>
+        </div>
       </div>
 
       <DashboardFilters classes={allClasses} judges={judges} showTimeRange />
