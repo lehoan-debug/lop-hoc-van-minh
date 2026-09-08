@@ -740,6 +740,34 @@ export async function softDeleteScore(submissionId: string): Promise<boolean> {
   );
 }
 
+/**
+ * Sửa lượt chấm V2 (theo Đợt chấm) — CHỈ ADMIN/SUPER_ADMIN được gọi (kiểm
+ * tra ở Server Action, không tin FE). Chỉ cho sửa kết quả ĐẠT/KHÔNG ĐẠT và
+ * ghi chú của TỪNG tiêu chí đã có trong snapshot gốc — KHÔNG cho thêm/bớt
+ * tiêu chí hay đổi tên/maxScore, để giữ đúng bản chất "snapshot bất biến tại
+ * thời điểm chấm" (đúng yêu cầu V2: sửa Criteria hiện tại không được ảnh
+ * hưởng lượt chấm lịch sử — ở đây là Admin sửa lỗi nhập liệu, không phải
+ * tính lại theo Criteria mới). `nextSnapshot` phải cùng bộ criterionId với
+ * bản ghi hiện có — hàm không tự thêm/bớt.
+ */
+export async function editRoundScore(
+  submissionId: string,
+  nextSnapshot: CriterionSnapshotItem[],
+): Promise<boolean> {
+  const totalScore = nextSnapshot.reduce((sum, item) => sum + item.awardedScore, 0);
+  const maxPossibleScore = nextSnapshot.reduce((sum, item) => sum + item.maxScore, 0);
+  const answers: Record<string, "PASS" | "FAIL"> = {};
+  for (const item of nextSnapshot) answers[item.criterionId] = item.result;
+
+  return updateRowWhere(SHEET_NAMES.SCORES, (row) => row.submissionId === submissionId, {
+    criteriaSnapshotJson: JSON.stringify(nextSnapshot),
+    answersJson: JSON.stringify(answers),
+    totalScore: String(totalScore),
+    maxPossibleScore: String(maxPossibleScore),
+    updatedAt: nowIso(),
+  });
+}
+
 // ---------- Adjustments ----------
 
 function rowToAdjustment(row: SheetRow): AdjustmentRecord {

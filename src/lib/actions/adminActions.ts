@@ -7,6 +7,7 @@ import {
   createAdjustmentSchema,
   editAdjustmentSchema,
   editScoreSchema,
+  editRoundScoreSchema,
   updateUserSchema,
   updateSettingSchema,
   manualRankingDecisionSchema,
@@ -18,6 +19,7 @@ import {
   editAdjustment,
   softDeleteAdjustment,
   editScore,
+  editRoundScore,
   softDeleteScore,
   getScore,
   getClasses,
@@ -31,7 +33,8 @@ import {
   upsertRankingDecision,
   appendAuditLog,
 } from "@/lib/google/sheets";
-import { CRITERION_KEYS, type CriterionKey } from "@/types";
+import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
+import { CRITERION_KEYS, type CriterionKey, type CriterionSnapshotItem } from "@/types";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
@@ -162,6 +165,82 @@ export async function editScoreAction(raw: unknown): Promise<ActionResult> {
 
     revalidatePath("/admin/results");
     revalidatePath("/admin");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+/** Sửa lượt chấm V2 (theo Đợt chấm) — chỉ ADMIN/SUPER_ADMIN, chỉ ngoài lúc
+ * chấm (Giám khảo không có đường nào để sửa sau khi đã Xác nhận & Lưu — xem
+ * RoundScoringScreen: đã nộp thì chỉ xem, không có nút Sửa nào cả). */
+export async function editRoundScoreAction(raw: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    const parsed = editRoundScoreSchema.safeParse(raw);
+    if (!parsed.success) return fail("Dữ liệu không hợp lệ.");
+    const { submissionId, results } = parsed.data;
+
+    const existing = await getScore(submissionId);
+    if (!existing || existing.deletedAt) return fail("Không tìm thấy kết quả chấm điểm.");
+    if (!existing.roundId) return fail("Lượt chấm này không thuộc Đợt chấm — dùng chức năng Sửa thông thường.");
+
+    let originalSnapshot: CriterionSnapshotItem[] = [];
+    try {
+      originalSnapshot = JSON.parse(existing.criteriaSnapshotJson || "[]");
+    } catch {
+      originalSnapshot = [];
+    }
+    const originalById = new Map(originalSnapshot.map((item) => [item.criterionId, item]));
+
+    // Không cho thêm/bớt tiêu chí qua sửa — phải khớp CHÍNH XÁC bộ criterionId
+    // đã có trong snapshot gốc tại thời điểm chấm.
+    const incomingIds = new Set(results.map((r) => r.criterionId));
+    const sameSet =
+      incomingIds.size === originalById.size &&
+      [...incomingIds].every((id) => originalById.has(id));
+    if (!sameSet) {
+      return fail("Danh sách tiêu chí không khớp với lượt chấm gốc.");
+    }
+
+    const nextSnapshot: CriterionSnapshotItem[] = results.map((r) => {
+      const base = originalById.get(r.criterionId)!;
+      return {
+        criterionId: base.criterionId,
+        name: base.name,
+        maxScore: base.maxScore,
+        result: r.result,
+        awardedScore: r.result === "PASS" ? base.maxScore : 0,
+        note: r.note || undefined,
+      };
+    });
+
+    const beforeTotal = getEffectiveScore(existing);
+    const beforeMax = getEffectiveMaxScore(existing);
+
+    const ok = await editRoundScore(submissionId, nextSnapshot);
+    if (!ok) return fail("Không thể cập nhật kết quả.");
+
+    const afterTotal = nextSnapshot.reduce((sum, item) => sum + item.awardedScore, 0);
+    const afterMax = nextSnapshot.reduce((sum, item) => sum + item.maxScore, 0);
+
+    await appendAuditLog({
+      userEmail: user.email,
+      userName: user.name,
+      action: "EDIT_SCORE",
+      entityType: "Score",
+      entityId: submissionId,
+      details: {
+        classId: existing.classId,
+        roundId: existing.roundId,
+        before: { totalScore: beforeTotal, maxPossibleScore: beforeMax },
+        after: { totalScore: afterTotal, maxPossibleScore: afterMax },
+      },
+    });
+
+    revalidatePath("/admin/results");
+    revalidatePath("/admin");
+    revalidatePath(`/admin/scoring-rounds/${existing.roundId}`);
     return { ok: true, data: undefined };
   } catch (e) {
     return handleKnownError(e);

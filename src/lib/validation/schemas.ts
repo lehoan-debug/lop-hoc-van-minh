@@ -37,6 +37,22 @@ export const editScoreSchema = submitScoreSchema.extend({
   submissionId: z.string().uuid(),
 });
 
+/** Sửa lượt chấm V2 (theo Đợt chấm) — chỉ sửa Đạt/Không đạt + ghi chú của
+ * TỪNG tiêu chí đã có trong snapshot gốc, không đổi tên/maxScore/thêm bớt
+ * tiêu chí (giữ đúng tính bất biến của snapshot tại thời điểm chấm). */
+export const editRoundScoreSchema = z.object({
+  submissionId: z.string().uuid(),
+  results: z
+    .array(
+      z.object({
+        criterionId: z.string().min(1),
+        result: z.enum(["PASS", "FAIL"]),
+        note: z.string().max(500).optional().default(""),
+      }),
+    )
+    .min(1),
+});
+
 export const createAdjustmentSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   classId: z.string().min(1),

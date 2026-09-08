@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { editScoreAction, deleteScoreAction } from "@/lib/actions/adminActions";
+import { editScoreAction, editRoundScoreAction, deleteScoreAction } from "@/lib/actions/adminActions";
 import {
   getEffectiveScore,
   getEffectiveMaxScore,
@@ -22,7 +22,7 @@ import {
   isRoundScore,
 } from "@/lib/scoring/effectiveScore";
 import { CRITERIA_COUNT, type CriterionKey } from "@/types";
-import type { AdjustmentRecord, ScoreRecord, CriterionConfig, Session_ } from "@/types";
+import type { AdjustmentRecord, CriterionSnapshotItem, ScoreRecord, CriterionConfig, Session_ } from "@/types";
 
 const SESSION_LABEL: Record<Session_, string> = { MORNING: "Sáng", AFTERNOON: "Chiều" };
 
@@ -112,19 +112,9 @@ export function ResultsTable({
                           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
                         </button>
                         <button
-                          onClick={() => !isV2 && setEditing(s)}
-                          disabled={isV2}
-                          className={cn(
-                            "rounded p-1.5",
-                            isV2
-                              ? "cursor-not-allowed text-muted-foreground opacity-40"
-                              : "text-primary hover:bg-accent",
-                          )}
-                          title={
-                            isV2
-                              ? "Chưa hỗ trợ sửa trực tiếp lượt chấm theo Đợt chấm — chỉ xoá được"
-                              : "Chỉnh sửa"
-                          }
+                          onClick={() => setEditing(s)}
+                          className="rounded p-1.5 text-primary hover:bg-accent"
+                          title="Chỉnh sửa"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -170,7 +160,10 @@ export function ResultsTable({
         </table>
       </div>
 
-      {editing && (
+      {editing && isRoundScore(editing) && (
+        <EditRoundScoreDialog score={editing} onClose={() => setEditing(null)} />
+      )}
+      {editing && !isRoundScore(editing) && (
         <EditScoreDialog
           score={editing}
           criteria={criteria}
@@ -182,6 +175,142 @@ export function ResultsTable({
         <DeleteScoreDialog score={deleting} onClose={() => setDeleting(null)} />
       )}
     </>
+  );
+}
+
+/** Sửa lượt chấm V2 — chỉ sửa Đạt/Không đạt + ghi chú của TỪNG tiêu chí đã
+ * có trong snapshot gốc (tên/điểm tối đa lấy nguyên từ snapshot, không đổi
+ * được ở đây), đúng nguyên tắc snapshot bất biến tại thời điểm chấm. */
+function EditRoundScoreDialog({ score, onClose }: { score: ScoreRecord; onClose: () => void }) {
+  const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
+  const [snapshot] = React.useState<CriterionSnapshotItem[]>(() => {
+    try {
+      return JSON.parse(score.criteriaSnapshotJson || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [results, setResults] = React.useState<Map<string, { result: "PASS" | "FAIL"; note: string }>>(
+    () => new Map(snapshot.map((item) => [item.criterionId, { result: item.result, note: item.note ?? "" }])),
+  );
+
+  const total = Array.from(results.entries()).reduce((sum, [criterionId, r]) => {
+    const item = snapshot.find((s) => s.criterionId === criterionId);
+    return sum + (r.result === "PASS" ? (item?.maxScore ?? 0) : 0);
+  }, 0);
+  const max = snapshot.reduce((sum, item) => sum + item.maxScore, 0);
+
+  const setResult = (criterionId: string, result: "PASS" | "FAIL") => {
+    setResults((prev) => {
+      const next = new Map(prev);
+      const current = next.get(criterionId) ?? { result, note: "" };
+      next.set(criterionId, { ...current, result });
+      return next;
+    });
+  };
+  const setNote = (criterionId: string, note: string) => {
+    setResults((prev) => {
+      const next = new Map(prev);
+      const current = next.get(criterionId) ?? { result: "PASS" as const, note };
+      next.set(criterionId, { ...current, note });
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    startTransition(async () => {
+      const result = await editRoundScoreAction({
+        submissionId: score.submissionId,
+        results: Array.from(results.entries()).map(([criterionId, r]) => ({
+          criterionId,
+          result: r.result,
+          note: r.note,
+        })),
+      });
+      if (result.ok) {
+        toast({ variant: "success", title: "Đã cập nhật kết quả chấm điểm." });
+        onClose();
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            Chỉnh sửa — {score.className} ({SESSION_LABEL[score.session]} {formatDateVN(score.date)})
+          </DialogTitle>
+        </DialogHeader>
+        <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+          {snapshot.map((item, i) => {
+            const current = results.get(item.criterionId);
+            return (
+              <div key={item.criterionId} className="rounded-md border border-border p-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm">
+                    {i + 1}. {item.name}{" "}
+                    <span className="text-xs text-muted-foreground">(tối đa {item.maxScore})</span>
+                  </span>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      onClick={() => setResult(item.criterionId, "PASS")}
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-xs font-semibold",
+                        current?.result === "PASS"
+                          ? "border-success bg-success text-success-foreground"
+                          : "border-border",
+                      )}
+                    >
+                      Đạt
+                    </button>
+                    <button
+                      onClick={() => setResult(item.criterionId, "FAIL")}
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-xs font-semibold",
+                        current?.result === "FAIL"
+                          ? "border-warning bg-warning text-warning-foreground"
+                          : "border-border",
+                      )}
+                    >
+                      Không đạt
+                    </button>
+                  </div>
+                </div>
+                {current?.result === "FAIL" && (
+                  <input
+                    value={current.note}
+                    onChange={(e) => setNote(item.criterionId, e.target.value)}
+                    placeholder="Ghi chú / minh chứng"
+                    className="mt-2 h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  />
+                )}
+              </div>
+            );
+          })}
+          {snapshot.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Không đọc được dữ liệu tiêu chí gốc của lượt chấm này.
+            </p>
+          )}
+        </div>
+        <p className="mt-2 text-sm font-semibold">
+          Tổng: {total}/{max}
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Huỷ
+          </Button>
+          <Button onClick={handleSave} disabled={isPending || snapshot.length === 0}>
+            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Lưu thay đổi
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
