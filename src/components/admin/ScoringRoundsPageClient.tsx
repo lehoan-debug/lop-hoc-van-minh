@@ -4,8 +4,9 @@ import * as React from "react";
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Lock, Settings, Eye, Loader2, Trash2 } from "lucide-react";
+import { Plus, Lock, Eye, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
@@ -14,6 +15,15 @@ import { lockRoundAction, deleteRoundAction } from "@/lib/actions/roundActions";
 import { CreateRoundDialog } from "@/components/admin/CreateRoundDialog";
 import { DeleteRoundConfirmDialog } from "@/components/admin/DeleteRoundConfirmDialog";
 import type { AppUser, ClassConfig, CriterionConfig, EffectiveRoundStatus, ScoringRound, Session_ } from "@/types";
+
+type SortKey = "dateDesc" | "dateAsc" | "nameAsc" | "nameDesc";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  dateDesc: "Ngày chấm (mới nhất)",
+  dateAsc: "Ngày chấm (cũ nhất)",
+  nameAsc: "Tên (A → Z)",
+  nameDesc: "Tên (Z → A)",
+};
 
 export interface RoundListItem {
   round: ScoringRound;
@@ -46,23 +56,71 @@ export function ScoringRoundsPageClient({
   criteria: CriterionConfig[];
 }) {
   const [creating, setCreating] = React.useState(false);
+  const [sortKey, setSortKey] = React.useState<SortKey>("dateDesc");
+  const [showCancelled, setShowCancelled] = React.useState(false);
+
+  const cancelledCount = items.filter((i) => i.effectiveStatus === "CANCELLED").length;
+
+  const visibleItems = React.useMemo(() => {
+    const filtered = showCancelled ? items : items.filter((i) => i.effectiveStatus !== "CANCELLED");
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case "dateAsc":
+          return a.round.startsAt.localeCompare(b.round.startsAt);
+        case "nameAsc":
+          return a.round.title.localeCompare(b.round.title);
+        case "nameDesc":
+          return b.round.title.localeCompare(a.round.title);
+        case "dateDesc":
+        default:
+          return b.round.startsAt.localeCompare(a.round.startsAt);
+      }
+    });
+    return sorted;
+  }, [items, sortKey, showCancelled]);
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+                <SelectItem key={key} value={key}>
+                  {SORT_LABEL[key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {cancelledCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowCancelled((v) => !v)}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {showCancelled ? "Ẩn đợt đã huỷ" : `Hiện cả đợt đã huỷ (${cancelledCount})`}
+            </button>
+          )}
+        </div>
         <Button onClick={() => setCreating(true)}>
           <Plus className="h-4 w-4" />
           Tạo đợt chấm
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => (
-          <RoundCard key={item.round.roundId} item={item} />
+      <div className="space-y-2">
+        {visibleItems.map((item) => (
+          <RoundRow key={item.round.roundId} item={item} />
         ))}
-        {items.length === 0 && (
-          <p className="col-span-full text-center text-sm text-muted-foreground">
-            Chưa có đợt chấm nào. Bấm &quot;Tạo đợt chấm&quot; để bắt đầu.
+        {visibleItems.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {items.length === 0
+              ? 'Chưa có đợt chấm nào. Bấm "Tạo đợt chấm" để bắt đầu.'
+              : "Không có đợt chấm nào phù hợp."}
           </p>
         )}
       </div>
@@ -79,7 +137,7 @@ export function ScoringRoundsPageClient({
   );
 }
 
-function RoundCard({ item }: { item: RoundListItem }) {
+function RoundRow({ item }: { item: RoundListItem }) {
   const { toast } = useToast();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -112,47 +170,46 @@ function RoundCard({ item }: { item: RoundListItem }) {
   };
 
   return (
-    <div className="rounded-[var(--radius)] border border-border bg-card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-semibold">{round.title}</p>
-        <span
-          className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_TONE[effectiveStatus])}
-        >
-          {ROUND_STATUS_LABEL[effectiveStatus]}
-        </span>
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between",
+        effectiveStatus === "CANCELLED" && "opacity-60",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold">{round.title}</p>
+          <span
+            className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_TONE[effectiveStatus])}
+          >
+            {ROUND_STATUS_LABEL[effectiveStatus]}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {formatDateVN(round.startsAt)} · {formatTimeVN(round.startsAt)}–{formatTimeVN(round.endsAt)} · Buổi{" "}
+          {SESSION_LABEL[round.session]}
+        </p>
+        <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+          <span>
+            Người chấm: <strong className="text-foreground">{assignedJudgeCount}</strong>
+          </span>
+          <span>
+            Phân công:{" "}
+            <strong className={cn("text-foreground", unassignedCount > 0 && "text-warning")}>
+              {assignedClassCount}
+            </strong>
+            /{totalClasses} lớp
+          </span>
+          <span>
+            Đã chấm: <strong className="text-foreground">{doneCount}</strong>/{totalClasses} lớp
+          </span>
+        </p>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {formatDateVN(round.startsAt)} · {formatTimeVN(round.startsAt)}–{formatTimeVN(round.endsAt)} · Buổi{" "}
-        {SESSION_LABEL[round.session]}
-      </p>
 
-      <div className="mt-3 space-y-1 text-sm">
-        <p>
-          Người chấm: <strong>{assignedJudgeCount}</strong>
-        </p>
-        <p>
-          Phân công:{" "}
-          <strong className={unassignedCount > 0 ? "text-warning" : undefined}>
-            {assignedClassCount}
-          </strong>
-          /{totalClasses} lớp
-        </p>
-        <p>
-          Đã chấm: <strong>{doneCount}</strong>/{totalClasses} lớp
-        </p>
-      </div>
-
-      <div className="mt-4 flex gap-2">
+      <div className="flex shrink-0 gap-2">
         <Link
           href={`/admin/scoring-rounds/${round.roundId}`}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius)] border border-input bg-background text-sm font-medium hover:bg-accent"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Cấu hình
-        </Link>
-        <Link
-          href={`/admin/scoring-rounds/${round.roundId}`}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius)] border border-input bg-background text-sm font-medium hover:bg-accent"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
         >
           <Eye className="h-3.5 w-3.5" />
           Theo dõi
