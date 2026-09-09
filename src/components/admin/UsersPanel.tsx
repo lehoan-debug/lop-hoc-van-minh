@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Loader2, FileSpreadsheet, Trash2, RotateCcw, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Loader2, FileSpreadsheet, Trash2, RotateCcw, AlertTriangle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,11 +51,23 @@ export function UsersPanel({
   const [importing, setImporting] = React.useState(false);
   const [deleting, setDeleting] = React.useState<AppUser | null>(null);
   const [showDeleted, setShowDeleted] = React.useState(false);
+  const [search, setSearch] = React.useState("");
   const canManageAdmins = canManageAdminRoles({ roles: [currentUserRole] });
   const canDelete = canDeleteUsers({ roles: [currentUserRole] });
 
   const deletedCount = users.filter((u) => u.deletedAt).length;
-  const visibleUsers = showDeleted ? users : users.filter((u) => !u.deletedAt);
+  const visibleUsers = React.useMemo(() => {
+    const base = showDeleted ? users : users.filter((u) => !u.deletedAt);
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(
+      (u) =>
+        u.email.toLowerCase().includes(q) ||
+        u.name.toLowerCase().includes(q) ||
+        u.homeroomClassIds.some((c) => c.toLowerCase().includes(q)) ||
+        u.roles.some((r) => ROLE_LABEL[r].toLowerCase().includes(q)),
+    );
+  }, [users, showDeleted, search]);
 
   const handleRestore = (u: AppUser) => {
     startTransition(async () => {
@@ -86,17 +98,26 @@ export function UsersPanel({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        {deletedCount > 0 ? (
-          <button
-            type="button"
-            onClick={() => setShowDeleted((v) => !v)}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-          >
-            {showDeleted ? "Ẩn tài khoản đã xoá" : `Hiện cả tài khoản đã xoá (${deletedCount})`}
-          </button>
-        ) : (
-          <span />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Tìm theo email, tên, lớp, vai trò..."
+              className="pl-8"
+            />
+          </div>
+          {deletedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDeleted((v) => !v)}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {showDeleted ? "Ẩn tài khoản đã xoá" : `Hiện cả tài khoản đã xoá (${deletedCount})`}
+            </button>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImporting(true)}>
             <FileSpreadsheet className="h-4 w-4" />
@@ -110,9 +131,10 @@ export function UsersPanel({
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="border-b border-border bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
+              <th className="w-12 px-3 py-2">STT</th>
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Tên</th>
               <th className="px-3 py-2">Vai trò</th>
@@ -122,7 +144,7 @@ export function UsersPanel({
             </tr>
           </thead>
           <tbody>
-            {visibleUsers.map((u) => {
+            {visibleUsers.map((u, index) => {
               const isSelf = u.email === currentUserEmail;
               return (
                 <tr
@@ -132,6 +154,7 @@ export function UsersPanel({
                     u.deletedAt && "opacity-60",
                   )}
                 >
+                  <td className="px-3 py-2 text-muted-foreground">{index + 1}</td>
                   <td className="px-3 py-2">{u.email}</td>
                   <td className="px-3 py-2">{u.name}</td>
                   <td className="px-3 py-2">
@@ -195,8 +218,8 @@ export function UsersPanel({
             })}
             {visibleUsers.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                  Chưa có tài khoản nào.
+                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                  {search.trim() ? "Không tìm thấy tài khoản phù hợp." : "Chưa có tài khoản nào."}
                 </td>
               </tr>
             )}
