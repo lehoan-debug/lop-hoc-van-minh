@@ -38,6 +38,7 @@ export function HomeroomDashboard({
   penaltyTotal,
   criteria,
   userEmail,
+  roundTitleById,
 }: {
   classInfo: ClassConfig;
   myClasses: ClassConfig[];
@@ -55,6 +56,9 @@ export function HomeroomDashboard({
   penaltyTotal: number;
   criteria: CriterionConfig[];
   userEmail: string;
+  /** roundId -> tên Đợt chấm, hiện trong "Kết quả chi tiết" thay vì chỉ
+   * ngày/giờ thô. Bản ghi V1 cũ (không gắn Đợt chấm) không có trong map này. */
+  roundTitleById: Record<string, string>;
 }) {
   const router = useRouter();
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -249,7 +253,12 @@ export function HomeroomDashboard({
                   className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
                 >
                   <div>
-                    <span>
+                    <p className="font-medium">
+                      {s.roundId
+                        ? (roundTitleById[s.roundId] ?? "Đợt chấm")
+                        : `Chấm điểm ngày ${formatDateVN(s.date)}`}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
                       {formatDateVN(s.date)} · {formatTimeVN(s.timestamp)}
                     </span>
                     {s.generalNote && (

@@ -6,6 +6,7 @@ import {
   getAdjustments,
   getSettings,
   getCriteria,
+  getScoringRounds,
 } from "@/lib/google/sheets";
 import { currentYearMonthVN, getMonthDateRange, todayVN, formatDateVN } from "@/lib/timezone/timezone";
 import {
@@ -60,13 +61,19 @@ export default async function HomeroomPage({
   const { from, to } = getMonthDateRange(yearMonth);
   const today = todayVN();
 
-  const [monthScores, monthAdjustments, settings, criteria, todayScores] = await Promise.all([
+  const [monthScores, monthAdjustments, settings, criteria, todayScores, allRounds] = await Promise.all([
     getScores({ dateFrom: from, dateTo: to, classId: selectedClassId }),
     getAdjustments({ dateFrom: from, dateTo: to, classId: selectedClassId }),
     getSettings(),
     getCriteria(),
     getScores({ dateFrom: today, dateTo: today, classId: selectedClassId }),
+    getScoringRounds(),
   ]);
+  // Tên Đợt chấm để hiện trong "Kết quả chi tiết" thay vì chỉ ngày/giờ thô —
+  // GVCN cần biết đây là kết quả của đợt nào (vd. "Đợt chấm sáng 08/09"),
+  // không phải một dòng log kỹ thuật.
+  const roundTitleById: Record<string, string> = {};
+  for (const r of allRounds) roundTitleById[r.roundId] = r.title;
 
   const gradeClasses = allClasses.filter((c) => c.grade === classInfo.grade);
   const isUnconfirmed = settings.DAILY_SCORE_COMBINE_MODE === "UNCONFIRMED";
@@ -128,6 +135,7 @@ export default async function HomeroomPage({
       penaltyTotal={penaltyTotal}
       criteria={criteria}
       userEmail={user.email}
+      roundTitleById={roundTitleById}
     />
   );
 }
