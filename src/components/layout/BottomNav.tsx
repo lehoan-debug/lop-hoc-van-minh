@@ -22,19 +22,23 @@ export function BottomNav({ roles }: { roles: UserRole[] }) {
   // Tài khoản đa vai trò (vd. ADMIN + JUDGE) cần cách chuyển nhanh giữa các
   // khu vực — trước đây chỉ /admin có link sang /judge, chiều ngược lại
   // không có gì, nên coi như "kẹt" trong khu vực Chấm điểm.
+  //
+  // Thứ tự tab: GVCN ưu tiên trước Chấm điểm/Lịch sử — tài khoản vừa là
+  // GVCN vừa là Giám khảo cần xem xếp hạng lớp mình trước, chấm điểm thì
+  // bấm sang tab riêng khi cần.
   const items = [
     hasAnyRole(user, ["ADMIN", "SUPER_ADMIN"]) && {
       href: "/admin",
       label: "Quản trị",
       icon: ShieldCheck,
     },
-    canAccessScoring(user) && { href: "/judge", label: "Chấm điểm", icon: ClipboardCheck },
-    canAccessScoring(user) && { href: "/judge/history", label: "Lịch sử", icon: History },
     hasRole(user, "HOMEROOM_TEACHER") && {
       href: "/homeroom",
       label: "Lớp chủ nhiệm",
       icon: School,
     },
+    canAccessScoring(user) && { href: "/judge", label: "Chấm điểm", icon: ClipboardCheck },
+    canAccessScoring(user) && { href: "/judge/history", label: "Lịch sử", icon: History },
     { href: "/judge/account", label: "Tài khoản", icon: User },
   ].filter((x): x is { href: string; label: string; icon: typeof User } => !!x);
 
