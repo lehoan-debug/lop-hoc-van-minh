@@ -9,6 +9,7 @@ import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { getEffectiveScore, getEffectiveMaxScore } from "@/lib/scoring/effectiveScore";
 import { sendHomeroomReportAction } from "@/lib/actions/emailActions";
 import { SendReportButton } from "@/components/layout/SendReportDialog";
+import { SignOutButton } from "@/components/layout/SignOutButton";
 import type { ClassRankingResult } from "@/lib/ranking/rankClasses";
 import type { ClassDailyScoreSummary, CriterionFailureStat } from "@/lib/admin/aggregate";
 import type {
@@ -64,9 +65,12 @@ export function HomeroomDashboard({
 
   return (
     <div className="mx-auto max-w-lg p-4 pb-8">
-      <div className="mb-3 flex items-center gap-2">
-        <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
-        <h1 className="text-lg font-bold">Lớp chủ nhiệm</h1>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
+          <h1 className="text-lg font-bold">Lớp chủ nhiệm</h1>
+        </div>
+        <SignOutButton size="sm" />
       </div>
 
       <div className="mb-4 flex justify-end">

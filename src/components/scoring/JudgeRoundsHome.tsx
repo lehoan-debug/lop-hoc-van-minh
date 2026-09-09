@@ -7,6 +7,7 @@ import { ChevronRight, Clock, Lock, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateVN, formatTimeVN } from "@/lib/timezone/timezone";
 import { ROUND_STATUS_LABEL, msUntilRoundEnds } from "@/lib/rounds/roundStatus";
+import { SignOutButton } from "@/components/layout/SignOutButton";
 import type { EffectiveRoundStatus, ScoringRound, Session_ } from "@/types";
 
 export interface RoundWithProgress {
@@ -36,9 +37,12 @@ export function JudgeRoundsHome({
   return (
     <div>
       <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
-          <h1 className="text-base font-semibold">Lớp học Văn minh</h1>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />
+            <h1 className="text-base font-semibold">Lớp học Văn minh</h1>
+          </div>
+          <SignOutButton size="sm" />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Xin chào, <span className="text-foreground">{userName}</span>
