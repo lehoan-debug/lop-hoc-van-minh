@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   CalendarClock,
   SlidersHorizontal,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/admin/adjustments", label: "Điểm cộng/trừ", icon: Award },
   { href: "/admin/criteria", label: "Tiêu chí", icon: SlidersHorizontal },
   { href: "/admin/criteria-analysis", label: "Phân tích tiêu chí", icon: BarChart3 },
+  { href: "/admin/reports", label: "Báo cáo", icon: Mail },
   { href: "/admin/users", label: "Tài khoản", icon: Users },
   { href: "/admin/settings", label: "Cấu hình", icon: Settings },
 ];
