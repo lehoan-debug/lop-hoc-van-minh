@@ -43,11 +43,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 p-3 sm:items-end sm:p-4">
+      {/* pointer-events-none ở khung ngoài: khung này LUÔN được render (kể
+          cả khi rỗng) và fixed top-0 full-width — nếu không tắt pointer-events,
+          phần padding của nó vẫn chặn click vào bất kỳ nút nào nằm ở top của
+          trang bên dưới (vd. nút "Quay lại" trong header sticky) ngay cả khi
+          không có toast nào đang hiện. Mở lại pointer-events-auto ở từng thẻ
+          toast thật để vẫn bấm đóng được. */}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 p-3 sm:items-end sm:p-4">
         {items.map((t) => (
           <div
             key={t.id}
-            className="flex w-full max-w-sm items-start gap-2 rounded-[var(--radius)] border border-border bg-card p-3 shadow-lg animate-in slide-in-from-top-2"
+            className="pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-[var(--radius)] border border-border bg-card p-3 shadow-lg animate-in slide-in-from-top-2"
           >
             {ICONS[t.variant]}
             <div className="flex-1 text-sm">

@@ -8,9 +8,16 @@ import {
   isUserAssignedToRound,
   checkDuplicateRoundScore,
   criterionAppliesToGrade,
+  getScores,
 } from "@/lib/google/sheets";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
-import { checkRoundEligibility, isCriterionInRoundScope } from "@/lib/rounds/eligibility";
+import {
+  checkRoundEligibility,
+  isCriterionInRoundScope,
+  isClassInRoundScope,
+  isClassInAssignmentScope,
+} from "@/lib/rounds/eligibility";
+import { findNextUnscoredClass } from "@/lib/rounds/nextClass";
 import { RoundScoringScreen } from "@/components/scoring/RoundScoringScreen";
 
 export default async function RoundScoringPage({
@@ -44,6 +51,25 @@ export default async function RoundScoringPage({
     .filter((c) => criterionAppliesToGrade(c, klass.grade) && isCriterionInRoundScope(round, c.criterionId))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
+  // Danh sách lớp được phân công (đúng thứ tự khối/sortOrder) + lớp đã chấm
+  // trong Đợt — dùng để nút "Chấm lớp tiếp theo" đưa thẳng sang lớp CHƯA
+  // CHẤM kế tiếp thay vì quay lại màn chọn lớp từ đầu.
+  let nextClass: { classId: string; className: string } | null = null;
+  if (assignment) {
+    const assignedClasses = classes
+      .filter((c) => isClassInRoundScope(round, c.classId, c.grade) && isClassInAssignmentScope(assignment, c.classId, c.grade))
+      .sort((a, b) => (a.grade === b.grade ? a.sortOrder - b.sortOrder : a.grade.localeCompare(b.grade)));
+    const scores = await getScores({ roundId });
+    const doneClassIds = scores.map((s) => s.classId);
+    const nextClassId = findNextUnscoredClass(
+      assignedClasses.map((c) => c.classId),
+      classId,
+      doneClassIds,
+    );
+    const nextClassInfo = nextClassId ? assignedClasses.find((c) => c.classId === nextClassId) : undefined;
+    nextClass = nextClassInfo ? { classId: nextClassInfo.classId, className: nextClassInfo.className } : null;
+  }
+
   return (
     <RoundScoringScreen
       round={round}
@@ -53,6 +79,7 @@ export default async function RoundScoringPage({
       effectiveStatus={getEffectiveRoundStatus(round)}
       canSubmit={eligibility.ok}
       existingScore={existingScore}
+      nextClass={nextClass}
     />
   );
 }

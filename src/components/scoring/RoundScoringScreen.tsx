@@ -65,6 +65,10 @@ interface RoundScoringScreenProps {
   effectiveStatus: EffectiveRoundStatus;
   canSubmit: boolean;
   existingScore: ScoreRecord | null;
+  /** Lớp CHƯA CHẤM tiếp theo trong danh sách được phân công — null nếu đã
+   * chấm hết. Dùng để nút "Chấm lớp tiếp theo" đưa thẳng sang đúng lớp đó
+   * thay vì quay lại màn chọn lớp từ đầu. */
+  nextClass: { classId: string; className: string } | null;
 }
 
 function draftKey(roundId: string, classId: string, judgeEmail: string) {
@@ -97,6 +101,7 @@ export function RoundScoringScreen({
   effectiveStatus,
   canSubmit,
   existingScore,
+  nextClass,
 }: RoundScoringScreenProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -362,14 +367,24 @@ export function RoundScoringScreen({
           </p>
         )}
         <p className="mt-1 text-2xl font-bold">Tổng điểm: {submittedTotals.finalScore}</p>
-        <Button
-          size="lg"
-          className="mt-6 w-full max-w-xs"
-          onClick={() => router.push(`/judge/${round.roundId}`)}
-        >
-          Chấm lớp tiếp theo
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        {nextClass ? (
+          <Button
+            size="lg"
+            className="mt-6 w-full max-w-xs"
+            onClick={() => router.push(`/judge/${round.roundId}/${nextClass.classId}`)}
+          >
+            Chấm lớp tiếp theo: {nextClass.className}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            size="lg"
+            className="mt-6 w-full max-w-xs"
+            onClick={() => router.push(`/judge/${round.roundId}`)}
+          >
+            Đã chấm hết lớp được phân công — Về danh sách lớp
+          </Button>
+        )}
       </div>
     );
   }
