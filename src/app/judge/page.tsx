@@ -1,5 +1,7 @@
+import Link from "next/link";
+import { School } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
-import { canAccessScoring, canManageRounds } from "@/lib/auth/permissions";
+import { canAccessScoring, canManageRounds, hasRole } from "@/lib/auth/permissions";
 import {
   getRoundAssignmentsForUser,
   getScoringRounds,
@@ -16,7 +18,16 @@ export default async function JudgePage() {
   if (!canAccessScoring(user)) {
     return (
       <div className="mx-auto max-w-lg p-6 text-center text-muted-foreground">
-        Tài khoản của bạn không có quyền truy cập chức năng chấm điểm.
+        <p>Tài khoản của bạn không có quyền truy cập chức năng chấm điểm.</p>
+        {hasRole(user, "HOMEROOM_TEACHER") && (
+          <Link
+            href="/homeroom"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+          >
+            <School className="h-3.5 w-3.5" />
+            Vào trang Lớp chủ nhiệm
+          </Link>
+        )}
       </div>
     );
   }
