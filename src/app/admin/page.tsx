@@ -1,14 +1,22 @@
 import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown, FileSpreadsheet, Mail } from "lucide-react";
 import Link from "next/link";
-import { getClasses, getScores, getAdjustments, getUsers, getScoringRounds } from "@/lib/google/sheets";
-import { todayVN } from "@/lib/timezone/timezone";
-import { computeDashboardCards, computeRoundClassProgress } from "@/lib/admin/aggregate";
+import { getClasses, getScores, getAdjustments, getUsers, getScoringRounds, getSettings } from "@/lib/google/sheets";
+import { todayVN, currentYearMonthVN, getMonthDateRange, getLastNDaysRange, listDatesInRange } from "@/lib/timezone/timezone";
+import {
+  computeDashboardCards,
+  computeRoundClassProgress,
+  computeDailyTrend,
+  computeMonthlyRankingForGrade,
+} from "@/lib/admin/aggregate";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
 import { isClassInRoundScope } from "@/lib/rounds/eligibility";
 import { DashboardFilters } from "@/components/admin/DashboardFilters";
 import { StatCard } from "@/components/admin/StatCard";
 import { DashboardRoundsPanel, type DashboardRoundItem } from "@/components/admin/DashboardRoundsPanel";
+import { DashboardTrendChart } from "@/components/admin/DashboardTrendChart";
+import { DashboardTopClasses } from "@/components/admin/DashboardTopClasses";
 import type { Grade } from "@/types";
+import type { ClassRankingResult } from "@/lib/ranking/rankClasses";
 
 export default async function AdminDashboardPage({
   searchParams,
@@ -22,13 +30,23 @@ export default async function AdminDashboardPage({
   const judgeEmail = sp.judgeEmail || undefined;
   const sessionFilter = sp.session === "MORNING" || sp.session === "AFTERNOON" ? sp.session : undefined;
 
-  const [allClasses, allJudges, scoresOfDate, adjustmentsOfDate, allRounds] = await Promise.all([
-    getClasses({ activeOnly: true }),
-    getUsers(),
-    getScores({ dateFrom: date, dateTo: date, grade, classId, judgeEmail, session: sessionFilter }),
-    getAdjustments({ dateFrom: date, dateTo: date, classId }),
-    getScoringRounds(),
-  ]);
+  const trendRange = getLastNDaysRange(date, 7);
+  const trendDates = listDatesInRange(trendRange.from, trendRange.to);
+  const yearMonth = currentYearMonthVN();
+  const { from: monthFrom, to: monthTo } = getMonthDateRange(yearMonth);
+
+  const [allClasses, allJudges, scoresOfDate, adjustmentsOfDate, allRounds, trendScores, settings, monthScores, monthAdjustments] =
+    await Promise.all([
+      getClasses({ activeOnly: true }),
+      getUsers(),
+      getScores({ dateFrom: date, dateTo: date, grade, classId, judgeEmail, session: sessionFilter }),
+      getAdjustments({ dateFrom: date, dateTo: date, classId }),
+      getScoringRounds(),
+      getScores({ dateFrom: trendRange.from, dateTo: trendRange.to }),
+      getSettings(),
+      getScores({ dateFrom: monthFrom, dateTo: monthTo }),
+      getAdjustments({ dateFrom: monthFrom, dateTo: monthTo }),
+    ]);
 
   const classesInScope = allClasses.filter((c) => !grade || c.grade === grade);
   const cards = computeDashboardCards({
@@ -38,6 +56,26 @@ export default async function AdminDashboardPage({
   });
 
   const judges = allJudges.filter((u) => u.role === "JUDGE");
+
+  const trendPoints = computeDailyTrend({ dates: trendDates, scoresInRange: trendScores });
+
+  // Top/Bottom lớp: xếp hạng RIÊNG theo từng khối (không gộp chung 3 khối)
+  // vì tiêu chí/điểm tối đa có thể khác nhau giữa khối 10/11/12 — gộp
+  // chung sẽ so sánh khập khiễng. Bỏ qua nếu công thức điểm ngày chưa được
+  // BTC xác nhận (giống /admin/ranking, /homeroom).
+  const isRankingConfirmed = settings.DAILY_SCORE_COMBINE_MODE !== "UNCONFIRMED";
+  const rankingsByGrade = {} as Record<Grade, ClassRankingResult[]>;
+  if (isRankingConfirmed) {
+    for (const g of ["10", "11", "12"] as Grade[]) {
+      rankingsByGrade[g] = computeMonthlyRankingForGrade({
+        classes: allClasses.filter((c) => c.grade === g),
+        scoresOfMonth: monthScores,
+        adjustmentsOfMonth: monthAdjustments,
+        combineMode: settings.DAILY_SCORE_COMBINE_MODE,
+        yearMonth,
+      });
+    }
+  }
 
   // Chỉ hiện Đợt chấm đang mở hoặc sắp diễn ra (OPEN trước, rồi SCHEDULED
   // theo thời gian gần nhất) — không hiện lại tiến độ theo ngày/buổi thô.
@@ -101,6 +139,25 @@ export default async function AdminDashboardPage({
         />
         <StatCard label="Điểm cộng" value={cards.bonusTotal} icon={Award} tone="success" />
         <StatCard label="Điểm trừ" value={cards.penaltyTotal} icon={ThumbsDown} tone="destructive" />
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 font-semibold">Xu hướng 7 ngày gần nhất</h2>
+        <div className="rounded-[var(--radius)] border border-border bg-card p-3">
+          <DashboardTrendChart points={trendPoints} />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-3 font-semibold">Top lớp tháng {yearMonth}</h2>
+        {isRankingConfirmed ? (
+          <DashboardTopClasses rankingsByGrade={rankingsByGrade} yearMonth={yearMonth} />
+        ) : (
+          <p className="rounded-[var(--radius)] border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+            Công thức điểm ngày chưa được BTC xác nhận — chưa có xếp hạng chính thức để hiển thị Top
+            lớp. Vào Cấu hình → Chung để chọn cách kết hợp điểm.
+          </p>
+        )}
       </div>
 
       <div className="mt-6">

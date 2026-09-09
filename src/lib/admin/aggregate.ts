@@ -58,6 +58,33 @@ export function computeDashboardCards(params: {
   };
 }
 
+// ---------- Xu hướng theo ngày (Dashboard) ----------
+
+export interface DailyTrendPoint {
+  date: string;
+  totalSubmissions: number;
+  averageScore: number | null;
+}
+
+/** Số lượt chấm + điểm TB mỗi ngày trong `dates` — dùng vẽ biểu đồ xu hướng
+ * trên Dashboard. Công thức averageScore giống hệt computeDashboardCards,
+ * chỉ khác là tính riêng cho từng ngày thay vì gộp cả khoảng. */
+export function computeDailyTrend(params: { dates: string[]; scoresInRange: ScoreRecord[] }): DailyTrendPoint[] {
+  const { dates, scoresInRange } = params;
+  const byDate = new Map<string, ScoreRecord[]>();
+  for (const s of scoresInRange) {
+    const arr = byDate.get(s.date) ?? [];
+    arr.push(s);
+    byDate.set(s.date, arr);
+  }
+  return dates.map((date) => {
+    const scores = byDate.get(date) ?? [];
+    const averageScore =
+      scores.length > 0 ? scores.reduce((sum, s) => sum + getEffectiveScore(s), 0) / scores.length : null;
+    return { date, totalSubmissions: scores.length, averageScore };
+  });
+}
+
 // ---------- Tiến độ theo Đợt chấm (thay cho progress theo ngày/buổi cũ —
 // V1 không còn phản ánh đúng thực tế khi chấm điểm đã chuyển sang theo Đợt
 // chấm (V2): 1 lớp "chưa chấm hôm nay" có thể vì chưa tới lượt trong Đợt,

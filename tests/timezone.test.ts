@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { formatInVN, formatDateVN, formatTimeVN, isTimeWithinRange } from "@/lib/timezone/timezone";
+import {
+  formatInVN,
+  formatDateVN,
+  formatTimeVN,
+  isTimeWithinRange,
+  getLastNDaysRange,
+  listDatesInRange,
+} from "@/lib/timezone/timezone";
 
 describe("Vietnam timezone boundary (UTC+7)", () => {
   it("23:30 UTC ngày hôm trước phải sang NGÀY HÔM SAU tại Việt Nam", () => {
@@ -39,5 +46,33 @@ describe("isTimeWithinRange", () => {
   it("ngoài khung giờ", () => {
     expect(isTimeWithinRange("06:59", "07:00", "07:45")).toBe(false);
     expect(isTimeWithinRange("07:46", "07:00", "07:45")).toBe(false);
+  });
+});
+
+describe("getLastNDaysRange", () => {
+  it("7 ngày gần nhất tính cả ngày kết thúc", () => {
+    expect(getLastNDaysRange("2026-09-09", 7)).toEqual({ from: "2026-09-03", to: "2026-09-09" });
+  });
+
+  it("băng qua ranh giới tháng", () => {
+    expect(getLastNDaysRange("2026-09-02", 7)).toEqual({ from: "2026-08-27", to: "2026-09-02" });
+  });
+
+  it("1 ngày trả về from = to = endDate", () => {
+    expect(getLastNDaysRange("2026-09-09", 1)).toEqual({ from: "2026-09-09", to: "2026-09-09" });
+  });
+});
+
+describe("listDatesInRange", () => {
+  it("liệt kê đủ từng ngày, hai đầu bao gồm", () => {
+    expect(listDatesInRange("2026-09-03", "2026-09-05")).toEqual([
+      "2026-09-03",
+      "2026-09-04",
+      "2026-09-05",
+    ]);
+  });
+
+  it("from = to trả về đúng 1 ngày", () => {
+    expect(listDatesInRange("2026-09-09", "2026-09-09")).toEqual(["2026-09-09"]);
   });
 });

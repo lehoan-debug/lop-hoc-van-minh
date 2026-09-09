@@ -73,6 +73,30 @@ export function getMonthDateRange(yearMonth: string): { from: string; to: string
   };
 }
 
+/** Khoảng `days` ngày gần nhất tính đến (và bao gồm) `endDate`, dạng
+ * YYYY-MM-DD — dùng cho biểu đồ xu hướng trên Dashboard. Tính thuần trên
+ * chuỗi ngày lịch (coi như UTC midnight) — KHÔNG đi qua toZonedTime/
+ * fromZonedTime vì `endDate` đã là ngày lịch VN rồi, quy đổi timezone lần
+ * nữa dễ lệch ngày. */
+export function getLastNDaysRange(endDate: string, days: number): { from: string; to: string } {
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return { from: start.toISOString().slice(0, 10), to: endDate };
+}
+
+/** Liệt kê từng ngày (YYYY-MM-DD) trong khoảng [from, to], hai đầu bao gồm. */
+export function listDatesInRange(from: string, to: string): string[] {
+  const dates: string[] = [];
+  const cur = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (cur.getTime() <= end.getTime()) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 /** So sánh "HH:mm" <= "HH:mm" (chuỗi cùng định dạng, so sánh từ điển là đủ). */
 export function isTimeWithinRange(
   current: string,

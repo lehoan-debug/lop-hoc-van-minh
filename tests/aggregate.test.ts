@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeRoundClassProgress } from "@/lib/admin/aggregate";
+import { computeRoundClassProgress, computeDailyTrend } from "@/lib/admin/aggregate";
 import type { ClassConfig, ScoreRecord } from "@/types";
 
 function klass(overrides: Partial<ClassConfig>): ClassConfig {
@@ -75,5 +75,26 @@ describe("computeRoundClassProgress", () => {
     const result = computeRoundClassProgress(classes, scores);
     expect(result.doneCount).toBe(2);
     expect(result.notDoneClasses).toEqual([]);
+  });
+});
+
+describe("computeDailyTrend", () => {
+  it("gộp đúng số lượt chấm + điểm TB theo từng ngày, ngày không có điểm -> 0 lượt/null", () => {
+    const dates = ["2026-09-07", "2026-09-08", "2026-09-09"];
+    const scores = [
+      score({ classId: "10A1", date: "2026-09-08", totalScore: 8 }),
+      score({ classId: "10A2", date: "2026-09-08", totalScore: 10 }),
+      score({ classId: "10A1", date: "2026-09-09", totalScore: 6 }),
+    ];
+    const result = computeDailyTrend({ dates, scoresInRange: scores });
+    expect(result).toEqual([
+      { date: "2026-09-07", totalSubmissions: 0, averageScore: null },
+      { date: "2026-09-08", totalSubmissions: 2, averageScore: 9 },
+      { date: "2026-09-09", totalSubmissions: 1, averageScore: 6 },
+    ]);
+  });
+
+  it("mảng dates rỗng -> mảng kết quả rỗng", () => {
+    expect(computeDailyTrend({ dates: [], scoresInRange: [score({})] })).toEqual([]);
   });
 });
