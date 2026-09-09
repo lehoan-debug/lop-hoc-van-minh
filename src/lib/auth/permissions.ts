@@ -58,6 +58,12 @@ export function canManageAdminRoles(user: Pick<AppUser, "roles">): boolean {
   return hasRole(user, "SUPER_ADMIN");
 }
 
+/** Chỉ SUPER_ADMIN được xoá tài khoản — xoá là hành động nặng (chặn đăng
+ * nhập ngay), ADMIN thường chỉ được khoá/mở qua toggle "Đang hoạt động". */
+export function canDeleteUsers(user: Pick<AppUser, "roles">): boolean {
+  return hasRole(user, "SUPER_ADMIN");
+}
+
 /**
  * Kiểm tra một thay đổi role cụ thể (đổi roles của 1 tài khoản từ
  * `previousRoles` sang `nextRoles`) có được phép hay không. Phải xét CẢ

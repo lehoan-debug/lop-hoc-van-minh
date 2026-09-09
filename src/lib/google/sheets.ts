@@ -104,18 +104,44 @@ function rowToUser(row: SheetRow): AppUser {
     homeroomClassIds: parseJsonArray(row.homeroomClassIdsJson, isString),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
+    deletedAt: row.deletedAt ?? "",
   };
 }
 
-export async function getUsers(): Promise<AppUser[]> {
+export async function getUsers(filter: { includeDeleted?: boolean } = {}): Promise<AppUser[]> {
   const rows = await getAllRows(SHEET_NAMES.USERS);
-  return rows.map(rowToUser);
+  const users = rows.map(rowToUser);
+  if (!filter.includeDeleted) return users.filter((u) => !u.deletedAt);
+  return users;
 }
 
 export async function getUserByEmail(email: string): Promise<AppUser | null> {
   const normalized = email.trim().toLowerCase();
-  const users = await getUsers();
+  const users = await getUsers({ includeDeleted: true });
   return users.find((u) => u.email === normalized) ?? null;
+}
+
+/** Xoá tài khoản (soft-delete) — chỉ Ất ơ được gọi (kiểm tra ở Server
+ * Action). Đặt `deletedAt` + `active=false` (chặn đăng nhập ngay, xem
+ * lib/auth/auth.ts) nhưng KHÔNG xoá hàng khỏi Sheet — Score/Adjustment/
+ * AuditLog cũ tham chiếu email này vẫn tra cứu được bình thường. */
+export async function deleteUser(email: string): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  return updateRowWhere(SHEET_NAMES.USERS, (row) => row.email?.trim().toLowerCase() === normalized, {
+    deletedAt: nowIso(),
+    active: "FALSE",
+    updatedAt: nowIso(),
+  });
+}
+
+/** Khôi phục tài khoản đã xoá — chỉ Ất ơ. Khôi phục về active=false (Ất ơ
+ * cần bật lại "Đang hoạt động" thủ công nếu muốn cho đăng nhập lại ngay). */
+export async function restoreUser(email: string): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  return updateRowWhere(SHEET_NAMES.USERS, (row) => row.email?.trim().toLowerCase() === normalized, {
+    deletedAt: "",
+    updatedAt: nowIso(),
+  });
 }
 
 export async function updateUser(input: {

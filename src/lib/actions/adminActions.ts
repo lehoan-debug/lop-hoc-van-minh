@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole, UnauthorizedError, ForbiddenError } from "@/lib/auth/session";
-import { canAssignRoles } from "@/lib/auth/permissions";
+import { canAssignRoles, canDeleteUsers } from "@/lib/auth/permissions";
 import {
   createAdjustmentSchema,
   editAdjustmentSchema,
@@ -25,6 +25,8 @@ import {
   getClasses,
   getUserByEmail,
   updateUser,
+  deleteUser,
+  restoreUser,
   updateSetting,
   updateClassActive,
   updateCriterion,
@@ -332,6 +334,64 @@ export async function updateUserAction(raw: unknown): Promise<ActionResult> {
         details: { homeroomClassIds: input.homeroomClassIds },
       });
     }
+
+    revalidatePath("/admin/users");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+/** Xoá tài khoản — chỉ Ất ơ (SUPER_ADMIN). Không cho tự xoá chính mình để
+ * tránh tự khoá bản thân khỏi hệ thống. Soft-delete, dữ liệu Score/Audit cũ
+ * không bị ảnh hưởng — xem deleteUser() trong sheets.ts. */
+export async function deleteUserAction(email: string): Promise<ActionResult> {
+  try {
+    const currentUser = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    if (!canDeleteUsers(currentUser)) return fail("Chỉ Ất ơ mới có thể xoá tài khoản.");
+
+    const normalized = email.trim().toLowerCase();
+    if (normalized === currentUser.email) return fail("Không thể tự xoá tài khoản của chính mình.");
+
+    const existing = await getUserByEmail(normalized);
+    if (!existing) return fail("Không tìm thấy tài khoản.");
+
+    const ok = await deleteUser(normalized);
+    if (!ok) return fail("Không thể xoá tài khoản.");
+
+    await appendAuditLog({
+      userEmail: currentUser.email,
+      userName: currentUser.name,
+      action: "DELETE_USER",
+      entityType: "User",
+      entityId: normalized,
+      details: { name: existing.name, roles: existing.roles },
+    });
+
+    revalidatePath("/admin/users");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return handleKnownError(e);
+  }
+}
+
+/** Khôi phục tài khoản đã xoá — chỉ Ất ơ. */
+export async function restoreUserAction(email: string): Promise<ActionResult> {
+  try {
+    const currentUser = await requireRole(["ADMIN", "SUPER_ADMIN"]);
+    if (!canDeleteUsers(currentUser)) return fail("Chỉ Ất ơ mới có thể khôi phục tài khoản.");
+
+    const normalized = email.trim().toLowerCase();
+    const ok = await restoreUser(normalized);
+    if (!ok) return fail("Không tìm thấy tài khoản.");
+
+    await appendAuditLog({
+      userEmail: currentUser.email,
+      userName: currentUser.name,
+      action: "RESTORE_USER",
+      entityType: "User",
+      entityId: normalized,
+    });
 
     revalidatePath("/admin/users");
     return { ok: true, data: undefined };

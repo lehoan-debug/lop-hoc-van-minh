@@ -5,7 +5,7 @@ import { UsersPanel } from "@/components/admin/UsersPanel";
 export default async function AdminUsersPage() {
   const currentUser = await requireUser();
   const [users, classes] = await Promise.all([
-    getUsers(),
+    getUsers({ includeDeleted: true }),
     getClasses({ activeOnly: true }),
   ]);
   const sorted = [...users].sort((a, b) => a.email.localeCompare(b.email));
@@ -13,7 +13,12 @@ export default async function AdminUsersPage() {
   return (
     <div>
       <h1 className="mb-4 text-xl font-bold">Quản lý tài khoản</h1>
-      <UsersPanel users={sorted} classes={classes} currentUserRole={currentUser.role} />
+      <UsersPanel
+        users={sorted}
+        classes={classes}
+        currentUserRole={currentUser.role}
+        currentUserEmail={currentUser.email}
+      />
     </div>
   );
 }

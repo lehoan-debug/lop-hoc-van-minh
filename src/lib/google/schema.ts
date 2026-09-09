@@ -37,6 +37,9 @@ export const HEADERS: Record<SheetName, readonly string[]> = {
     // V2 — thêm cuối, xem docs/V2_UPGRADE_ANALYSIS.md mục 3.1
     "rolesJson",
     "homeroomClassIdsJson",
+    // Xoá tài khoản (Ất ơ) — soft-delete giống Scores/Adjustments, KHÔNG xoá
+    // hàng khỏi Sheet. Rỗng = chưa xoá.
+    "deletedAt",
   ],
   [SHEET_NAMES.CLASSES]: ["classId", "className", "grade", "active", "sortOrder"],
   [SHEET_NAMES.CRITERIA]: [

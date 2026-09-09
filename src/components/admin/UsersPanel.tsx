@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Loader2, FileSpreadsheet } from "lucide-react";
+import { Plus, Pencil, Loader2, FileSpreadsheet, Trash2, RotateCcw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +17,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { updateUserAction } from "@/lib/actions/adminActions";
+import { updateUserAction, deleteUserAction, restoreUserAction } from "@/lib/actions/adminActions";
 import { ImportUsersDialog } from "@/components/admin/ImportUsersDialog";
-import { canManageAdminRoles } from "@/lib/auth/permissions";
+import { canManageAdminRoles, canDeleteUsers } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import type { AppUser, ClassConfig, Grade, Role, UserRole } from "@/types";
 
@@ -36,28 +36,77 @@ export function UsersPanel({
   users,
   classes,
   currentUserRole,
+  currentUserEmail,
 }: {
   users: AppUser[];
   classes: ClassConfig[];
   currentUserRole: Role;
+  currentUserEmail: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<AppUser | null>(null);
   const [importing, setImporting] = React.useState(false);
+  const [deleting, setDeleting] = React.useState<AppUser | null>(null);
+  const [showDeleted, setShowDeleted] = React.useState(false);
   const canManageAdmins = canManageAdminRoles({ roles: [currentUserRole] });
+  const canDelete = canDeleteUsers({ roles: [currentUserRole] });
+
+  const deletedCount = users.filter((u) => u.deletedAt).length;
+  const visibleUsers = showDeleted ? users : users.filter((u) => !u.deletedAt);
+
+  const handleRestore = (u: AppUser) => {
+    startTransition(async () => {
+      const result = await restoreUserAction(u.email);
+      if (result.ok) {
+        toast({ variant: "success", title: `Đã khôi phục tài khoản ${u.email}.` });
+        router.refresh();
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    if (!deleting) return;
+    startTransition(async () => {
+      const result = await deleteUserAction(deleting.email);
+      if (result.ok) {
+        toast({ variant: "success", title: `Đã xoá tài khoản ${deleting.email}.` });
+        setDeleting(null);
+        router.refresh();
+      } else {
+        toast({ variant: "error", title: result.error });
+      }
+    });
+  };
 
   return (
     <div>
-      <div className="mb-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={() => setImporting(true)}>
-          <FileSpreadsheet className="h-4 w-4" />
-          Nhập từ Excel
-        </Button>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" />
-          Thêm tài khoản
-        </Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        {deletedCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowDeleted((v) => !v)}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {showDeleted ? "Ẩn tài khoản đã xoá" : `Hiện cả tài khoản đã xoá (${deletedCount})`}
+          </button>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Nhập từ Excel
+          </Button>
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            Thêm tài khoản
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
@@ -73,37 +122,78 @@ export function UsersPanel({
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.email} className="border-b border-border last:border-0 hover:bg-accent/50">
-                <td className="px-3 py-2">{u.email}</td>
-                <td className="px-3 py-2">{u.name}</td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap gap-1">
-                    {u.roles.map((r) => (
-                      <Badge key={r} variant={r === "JUDGE" ? "secondary" : "default"}>
-                        {ROLE_LABEL[r]}
-                      </Badge>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  {u.homeroomClassIds.length > 0 ? u.homeroomClassIds.join(", ") : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  {u.active ? (
-                    <span className="text-success">Đang hoạt động</span>
-                  ) : (
-                    <span className="text-muted-foreground">Đã khoá</span>
+            {visibleUsers.map((u) => {
+              const isSelf = u.email === currentUserEmail;
+              return (
+                <tr
+                  key={u.email}
+                  className={cn(
+                    "border-b border-border last:border-0 hover:bg-accent/50",
+                    u.deletedAt && "opacity-60",
                   )}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={() => setEditing(u)} className="rounded p-1.5 text-primary hover:bg-accent">
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
+                >
+                  <td className="px-3 py-2">{u.email}</td>
+                  <td className="px-3 py-2">{u.name}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {u.roles.map((r) => (
+                        <Badge key={r} variant={r === "JUDGE" ? "secondary" : "default"}>
+                          {ROLE_LABEL[r]}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    {u.homeroomClassIds.length > 0 ? u.homeroomClassIds.join(", ") : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {u.deletedAt ? (
+                      <span className="text-destructive">Đã xoá</span>
+                    ) : u.active ? (
+                      <span className="text-success">Đang hoạt động</span>
+                    ) : (
+                      <span className="text-muted-foreground">Đã khoá</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex justify-end gap-1">
+                      {u.deletedAt ? (
+                        canDelete && (
+                          <button
+                            onClick={() => handleRestore(u)}
+                            disabled={isPending}
+                            title="Khôi phục tài khoản"
+                            className="rounded p-1.5 text-primary hover:bg-accent disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        )
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setEditing(u)}
+                            title="Chỉnh sửa"
+                            className="rounded p-1.5 text-primary hover:bg-accent"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          {canDelete && !isSelf && (
+                            <button
+                              onClick={() => setDeleting(u)}
+                              title="Xoá tài khoản"
+                              className="rounded p-1.5 text-destructive hover:bg-accent"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {visibleUsers.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                   Chưa có tài khoản nào.
@@ -133,6 +223,40 @@ export function UsersPanel({
             router.refresh();
           }}
         />
+      )}
+
+      {deleting && (
+        <Dialog open onOpenChange={(o) => !o && setDeleting(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Xoá tài khoản &quot;{deleting.name}&quot;?</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Tài khoản <strong>{deleting.email}</strong> sẽ bị khoá đăng nhập ngay lập tức. Đây là
+              thao tác an toàn — không xoá dữ liệu, các lượt chấm/lịch sử cũ gắn với tài khoản này
+              vẫn giữ nguyên và tra cứu được bình thường. Có thể khôi phục lại bất cứ lúc nào qua nút
+              &quot;Hiện cả tài khoản đã xoá&quot;.
+            </p>
+            {deleting.homeroomClassIds.length > 0 && (
+              <div className="flex items-start gap-2 rounded-[var(--radius)] border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Tài khoản này đang là GVCN của lớp {deleting.homeroomClassIds.join(", ")} — sau khi
+                  xoá, lớp này sẽ tạm thời chưa có GVCN nào cho tới khi bạn gán tài khoản khác.
+                </span>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleting(null)} disabled={isPending}>
+                Huỷ
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
+                {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Xác nhận xoá
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

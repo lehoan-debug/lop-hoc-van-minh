@@ -25,6 +25,8 @@ export type AuditAction =
   | "DELETE_ADJUSTMENT"
   | "UPDATE_SETTINGS"
   | "UPDATE_USER"
+  | "DELETE_USER"
+  | "RESTORE_USER"
   | "SAVE_RANKING_DECISION"
   | "CREATE_SCORING_ROUND"
   | "UPDATE_SCORING_ROUND"
@@ -69,6 +71,8 @@ export interface AppUser {
   homeroomClassIds: string[];
   createdAt: string;
   updatedAt: string;
+  /** Soft-delete (chỉ Ất ơ được xoá) — rỗng = chưa xoá, có giá trị = đã xoá. */
+  deletedAt: string;
 }
 
 export interface ClassConfig {
