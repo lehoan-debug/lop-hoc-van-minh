@@ -36,7 +36,7 @@ export function JudgeRoundsHome({
 
   return (
     <div>
-      <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3">
+      <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3 sm:top-[var(--section-topbar-height)]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Image src="/logo-fpt-schools.png" alt="FPT Schools" width={110} height={48} className="h-6 w-auto" />

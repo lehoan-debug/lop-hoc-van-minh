@@ -37,7 +37,7 @@ export function RoundClassPicker({
 
   return (
     <div>
-      <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3">
+      <header className="sticky top-0 z-30 border-b border-border bg-card px-4 py-3 sm:top-[var(--section-topbar-height)]">
         <button
           onClick={() => router.push("/judge")}
           className="flex items-center gap-1 text-sm text-muted-foreground"

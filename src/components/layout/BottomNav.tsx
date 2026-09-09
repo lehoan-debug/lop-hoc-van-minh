@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardCheck, History, User, School, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { canAccessScoring, hasAnyRole, hasRole } from "@/lib/auth/permissions";
+import { getSectionNavItems } from "@/components/layout/sectionNav";
 import type { UserRole } from "@/types";
 
 const GRID_COLS: Record<number, string> = {
@@ -15,32 +14,11 @@ const GRID_COLS: Record<number, string> = {
   5: "grid-cols-5",
 };
 
+/** Thanh điều hướng dưới cùng — CHỈ mobile (sm:hidden). Trên desktop dùng
+ * SectionTopBar thay thế (xem component đó để biết lý do cần tách riêng). */
 export function BottomNav({ roles }: { roles: UserRole[] }) {
   const pathname = usePathname();
-  const user = { roles };
-
-  // Tài khoản đa vai trò (vd. ADMIN + JUDGE) cần cách chuyển nhanh giữa các
-  // khu vực — trước đây chỉ /admin có link sang /judge, chiều ngược lại
-  // không có gì, nên coi như "kẹt" trong khu vực Chấm điểm.
-  //
-  // Thứ tự tab: GVCN ưu tiên trước Chấm điểm/Lịch sử — tài khoản vừa là
-  // GVCN vừa là Giám khảo cần xem xếp hạng lớp mình trước, chấm điểm thì
-  // bấm sang tab riêng khi cần.
-  const items = [
-    hasAnyRole(user, ["ADMIN", "SUPER_ADMIN"]) && {
-      href: "/admin",
-      label: "Quản trị",
-      icon: ShieldCheck,
-    },
-    hasRole(user, "HOMEROOM_TEACHER") && {
-      href: "/homeroom",
-      label: "Lớp chủ nhiệm",
-      icon: School,
-    },
-    canAccessScoring(user) && { href: "/judge", label: "Chấm điểm", icon: ClipboardCheck },
-    canAccessScoring(user) && { href: "/judge/history", label: "Lịch sử", icon: History },
-    { href: "/judge/account", label: "Tài khoản", icon: User },
-  ].filter((x): x is { href: string; label: string; icon: typeof User } => !!x);
+  const items = getSectionNavItems({ roles });
 
   return (
     <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card sm:hidden">

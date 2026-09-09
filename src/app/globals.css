@@ -42,6 +42,14 @@
        BottomNav phải cộng thêm env(safe-area-inset-bottom) riêng khi dùng
        biến này để tránh bị che trên các máy có thanh cử chỉ/tai thỏ. */
     --bottom-nav-height: 64px;
+
+    /* Chiều cao thực đo của SectionTopBar (chỉ hiện ở desktop, sm:flex) —
+       các header sticky top-0 bên trong khu vực Giám khảo/GVCN (vd.
+       RoundScoringScreen, RoundClassPicker, JudgeRoundsHome) phải cộng thêm
+       biến này vào top ở breakpoint sm+ để không bị SectionTopBar (z-40)
+       đè lên khi cuộn trang — 2 thanh sticky cùng top-0 sẽ chồng lên nhau
+       nếu không bù trừ. */
+    --section-topbar-height: 49px;
   }
 }
 
