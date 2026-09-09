@@ -66,20 +66,30 @@ export function canDeleteUsers(user: Pick<AppUser, "roles">): boolean {
 
 /**
  * Kiểm tra một thay đổi role cụ thể (đổi roles của 1 tài khoản từ
- * `previousRoles` sang `nextRoles`) có được phép hay không. Phải xét CẢ
- * roles trước và sau — nếu chỉ xét `nextRoles`, một ADMIN thường có thể "gỡ"
- * quyền ADMIN của người khác bằng cách đặt `nextRoles` không còn ADMIN, việc
- * này phải bị chặn y như việc CẤP quyền ADMIN (chỉ SUPER_ADMIN được làm).
+ * `previousRoles` sang `nextRoles`) có được phép hay không. Chỉ gate theo
+ * SUPER_ADMIN khi tập role ADMIN/SUPER_ADMIN THỰC SỰ THAY ĐỔI (thêm hoặc bớt)
+ * — so sánh khác biệt (previous vs next), KHÔNG phải chỉ cần ADMIN/SUPER_ADMIN
+ * xuất hiện ở đâu đó. Nếu chỉ xét "xuất hiện" (union) thay vì "thay đổi", một
+ * ADMIN thường sẽ bị chặn nhầm khi chỉnh JUDGE/HOMEROOM_TEACHER cho 1 tài
+ * khoản mà tài khoản đó tình cờ CŨNG có sẵn quyền ADMIN không đổi — đây là
+ * bug thực tế đã xảy ra (báo cáo: xoá quyền GVCN bị báo lỗi "chỉ Ất ơ mới
+ * xoá được quyền Admin" dù không đụng gì tới quyền Admin cả).
+ * Vẫn giữ nguyên tắc gốc: một ADMIN thường không được tự CẤP hay TỰ GỠ quyền
+ * ADMIN/SUPER_ADMIN của người khác (hay của chính mình) — chỉ SUPER_ADMIN
+ * mới làm được, vì đó là thay đổi thực sự của tập admin-tier.
  */
 export function canAssignRoles(
   actor: Pick<AppUser, "roles">,
   previousRoles: UserRole[],
   nextRoles: UserRole[],
 ): boolean {
-  const touchesAdminTier = [...previousRoles, ...nextRoles].some(
-    (r) => r === "ADMIN" || r === "SUPER_ADMIN",
-  );
-  if (touchesAdminTier) return canManageAdminRoles(actor);
+  const isAdminTier = (r: UserRole) => r === "ADMIN" || r === "SUPER_ADMIN";
+  const prevAdminTier = new Set(previousRoles.filter(isAdminTier));
+  const nextAdminTier = new Set(nextRoles.filter(isAdminTier));
+  const adminTierChanged =
+    prevAdminTier.size !== nextAdminTier.size ||
+    [...prevAdminTier].some((r) => !nextAdminTier.has(r));
+  if (adminTierChanged) return canManageAdminRoles(actor);
   return canManageUsers(actor);
 }
 

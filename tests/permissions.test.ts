@@ -75,6 +75,18 @@ describe("Phân quyền cấp Admin — chỉ SUPER_ADMIN được cấp/thu h�
     expect(canAssignRoles(admin, ["JUDGE"], ["JUDGE", "HOMEROOM_TEACHER"])).toBe(true);
   });
 
+  it("ADMIN gỡ HOMEROOM_TEACHER của 1 tài khoản VỐN CŨNG LÀ ADMIN được — không đụng tầng admin (bug đã sửa)", () => {
+    expect(canAssignRoles(admin, ["ADMIN", "HOMEROOM_TEACHER"], ["ADMIN"])).toBe(true);
+  });
+
+  it("ADMIN thêm HOMEROOM_TEACHER cho 1 tài khoản VỐN CŨNG LÀ ADMIN được — không đụng tầng admin (bug đã sửa)", () => {
+    expect(canAssignRoles(admin, ["ADMIN"], ["ADMIN", "HOMEROOM_TEACHER"])).toBe(true);
+  });
+
+  it("ADMIN vẫn KHÔNG gỡ được ADMIN dù đồng thời đổi role khác trong cùng lượt lưu", () => {
+    expect(canAssignRoles(admin, ["ADMIN", "HOMEROOM_TEACHER"], ["JUDGE"])).toBe(false);
+  });
+
   it("canManageAdminRoles chỉ true với SUPER_ADMIN", () => {
     expect(canManageAdminRoles(admin)).toBe(false);
     expect(canManageAdminRoles(superAdmin)).toBe(true);
