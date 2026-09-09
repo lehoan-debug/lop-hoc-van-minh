@@ -286,7 +286,7 @@ export async function updateUserAction(raw: unknown): Promise<ActionResult> {
     const previousRoles = existing?.roles ?? [];
 
     if (!canAssignRoles(currentUser, previousRoles, input.roles)) {
-      return fail("Chỉ Quản trị viên cấp cao mới có thể cấp/thu hồi quyền Quản trị viên.");
+      return fail("Chỉ Ất ơ mới có thể cấp/thu hồi quyền Quản trị viên.");
     }
 
     await updateUser(input);

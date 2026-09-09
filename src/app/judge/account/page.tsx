@@ -9,7 +9,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   JUDGE: "Giám khảo",
   HOMEROOM_TEACHER: "GVCN",
   ADMIN: "Quản trị viên",
-  SUPER_ADMIN: "Quản trị viên cấp cao",
+  SUPER_ADMIN: "Ất ơ",
 };
 
 export default async function JudgeAccountPage() {

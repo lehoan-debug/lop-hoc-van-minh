@@ -45,8 +45,8 @@ export async function GET() {
     refSheet.getRow(1).font = { bold: true };
     refSheet.addRow({ a: "JUDGE hoặc Giám khảo", b: "" });
     refSheet.addRow({ a: "HOMEROOM_TEACHER hoặc GVCN", b: "" });
-    refSheet.addRow({ a: "ADMIN hoặc Quản trị viên", b: "Chỉ Quản trị viên cấp cao mới cấp được" });
-    refSheet.addRow({ a: "SUPER_ADMIN hoặc Quản trị viên cấp cao", b: "Chỉ Quản trị viên cấp cao mới cấp được" });
+    refSheet.addRow({ a: "ADMIN hoặc Quản trị viên", b: "Chỉ Ất ơ mới cấp được" });
+    refSheet.addRow({ a: "SUPER_ADMIN hoặc Ất ơ", b: "Chỉ Ất ơ mới cấp được" });
     refSheet.addRow({ a: "", b: "" });
     refSheet.addRow({ a: "Nhiều vai trò cách nhau bởi dấu phẩy, ví dụ: JUDGE, HOMEROOM_TEACHER", b: "" });
     refSheet.addRow({ a: "Tài khoản đã tồn tại: vai trò/lớp chủ nhiệm mới sẽ CỘNG THÊM, không xoá vai trò cũ", b: "" });

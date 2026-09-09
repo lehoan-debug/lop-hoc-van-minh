@@ -33,7 +33,7 @@ export function DeleteRoundConfirmDialog({
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           Đợt chấm sẽ chuyển sang trạng thái Đã huỷ, không thể chấm điểm hay chỉnh sửa tiếp. Đây là
-          thao tác an toàn — không xoá dữ liệu, chỉ cần liên hệ Quản trị viên cấp cao nếu cần khôi
+          thao tác an toàn — không xoá dữ liệu, chỉ cần liên hệ Ất ơ nếu cần khôi
           phục.
         </p>
         {(doneCount > 0 || assignedJudgeCount > 0) && (

@@ -53,6 +53,8 @@ const ROLE_TOKEN_MAP: Record<string, UserRole> = {
   super_admin: "SUPER_ADMIN",
   "quản trị viên cấp cao": "SUPER_ADMIN",
   "quan tri vien cap cao": "SUPER_ADMIN",
+  "ất ơ": "SUPER_ADMIN",
+  "at o": "SUPER_ADMIN",
 };
 
 function splitTokens(raw: string): string[] {

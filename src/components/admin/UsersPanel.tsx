@@ -27,7 +27,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   JUDGE: "Giám khảo",
   HOMEROOM_TEACHER: "GVCN",
   ADMIN: "Quản trị viên",
-  SUPER_ADMIN: "Quản trị viên cấp cao",
+  SUPER_ADMIN: "Ất ơ",
 };
 
 const ADMIN_TIER_ROLES: UserRole[] = ["ADMIN", "SUPER_ADMIN"];
@@ -238,7 +238,7 @@ function UserFormDialog({
                     type="button"
                     disabled={disabled}
                     onClick={() => toggleRole(r)}
-                    title={disabled ? "Chỉ Quản trị viên cấp cao mới cấp được quyền này" : undefined}
+                    title={disabled ? "Chỉ Ất ơ mới cấp được quyền này" : undefined}
                     className={cn(
                       "rounded-md border px-3 py-1.5 text-sm font-medium",
                       roles.includes(r)
@@ -254,7 +254,7 @@ function UserFormDialog({
             </div>
             {!canManageAdmins && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Chỉ Quản trị viên cấp cao mới có thể cấp/thu hồi quyền Quản trị viên.
+                Chỉ Ất ơ mới có thể cấp/thu hồi quyền Quản trị viên.
               </p>
             )}
           </div>

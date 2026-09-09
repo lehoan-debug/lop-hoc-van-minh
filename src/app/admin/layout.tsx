@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-muted-foreground sm:inline">
-            {user.name} ({user.role === "SUPER_ADMIN" ? "Quản trị cấp cao" : "Quản trị viên"})
+            {user.name} ({user.role === "SUPER_ADMIN" ? "Ất ơ" : "Quản trị viên"})
           </span>
           <SignOutButton />
         </div>

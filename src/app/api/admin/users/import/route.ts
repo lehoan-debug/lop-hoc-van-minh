@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       allErrors.push({
         rowIndex: m.rowIndex,
         emailRaw: m.email,
-        reason: "Chỉ Quản trị viên cấp cao mới có thể cấp quyền Quản trị viên/Quản trị viên cấp cao.",
+        reason: "Chỉ Ất ơ mới có thể cấp quyền Quản trị viên/Ất ơ.",
       });
       return false;
     });

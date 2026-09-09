@@ -76,7 +76,7 @@ export function ImportUsersDialog({ onClose }: { onClose: () => void }) {
         <p className="text-sm text-muted-foreground">
           File Excel (.xlsx) 4 cột, từ dòng 2 (dòng 1 là tiêu đề): A = Email, B = Họ tên, C = Vai
           trò, D = Lớp chủ nhiệm (chỉ cần nếu có vai trò GVCN). Tài khoản đã tồn tại sẽ được CỘNG
-          THÊM vai trò/lớp chủ nhiệm mới, không xoá gì cả. Chỉ Quản trị viên cấp cao mới cấp được
+          THÊM vai trò/lớp chủ nhiệm mới, không xoá gì cả. Chỉ Ất ơ mới cấp được
           vai trò Quản trị viên qua import.
         </p>
 
