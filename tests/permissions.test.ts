@@ -7,6 +7,7 @@ import {
   canManageUsers,
   canManageAdminRoles,
   canAssignRoles,
+  canDeactivateUser,
   canViewHomeroomClass,
 } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types";
@@ -96,6 +97,41 @@ describe("Phân quyền cấp Admin — chỉ SUPER_ADMIN được cấp/thu h�
     expect(canManageUsers(admin)).toBe(true);
     expect(canManageUsers(superAdmin)).toBe(true);
     expect(canManageUsers(roles("JUDGE"))).toBe(false);
+  });
+});
+
+describe("canDeactivateUser — ADMIN không tự khoá được ADMIN/SUPER_ADMIN khác", () => {
+  const admin = roles("ADMIN");
+  const superAdmin = roles("SUPER_ADMIN");
+
+  it("ADMIN KHÔNG thể tắt active của 1 ADMIN khác đang hoạt động", () => {
+    const target = { roles: ["ADMIN"] as UserRole[], active: true };
+    expect(canDeactivateUser(admin, target, false)).toBe(false);
+  });
+
+  it("ADMIN KHÔNG thể tắt active của SUPER_ADMIN", () => {
+    const target = { roles: ["SUPER_ADMIN"] as UserRole[], active: true };
+    expect(canDeactivateUser(admin, target, false)).toBe(false);
+  });
+
+  it("SUPER_ADMIN vẫn tắt active của ADMIN khác được", () => {
+    const target = { roles: ["ADMIN"] as UserRole[], active: true };
+    expect(canDeactivateUser(superAdmin, target, false)).toBe(true);
+  });
+
+  it("ADMIN vẫn BẬT LẠI được active của 1 ADMIN khác đang bị khoá (không phải chiều tắt)", () => {
+    const target = { roles: ["ADMIN"] as UserRole[], active: false };
+    expect(canDeactivateUser(admin, target, true)).toBe(true);
+  });
+
+  it("ADMIN vẫn tắt/mở active của JUDGE/GVCN bình thường (không thuộc tầng admin)", () => {
+    const target = { roles: ["JUDGE", "HOMEROOM_TEACHER"] as UserRole[], active: true };
+    expect(canDeactivateUser(admin, target, false)).toBe(true);
+  });
+
+  it("Không đổi active (giữ nguyên true) không bị chặn", () => {
+    const target = { roles: ["ADMIN"] as UserRole[], active: true };
+    expect(canDeactivateUser(admin, target, true)).toBe(true);
   });
 });
 

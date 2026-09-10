@@ -315,6 +315,12 @@ function UserFormDialog({
     setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
   };
 
+  // ADMIN thường không được tự khoá "Đang hoạt động" của 1 tài khoản
+  // ADMIN/SUPER_ADMIN khác — chỉ khoá công tắc khi tài khoản đang hoạt
+  // động (đang bật), vì mục đích chỉ chặn chiều TẮT; bật lại vẫn cho phép.
+  const targetIsAdminTier = (existing?.roles ?? []).some((r) => ADMIN_TIER_ROLES.includes(r));
+  const activeToggleLocked = targetIsAdminTier && !canManageAdmins && (existing?.active ?? false);
+
   const toggleGrade = (g: Grade) => {
     setGrades((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   };
@@ -453,9 +459,20 @@ function UserFormDialog({
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <Label>Đang hoạt động</Label>
-            <Switch checked={active} onCheckedChange={setActive} />
+          <div>
+            <div className="flex items-center justify-between">
+              <Label>Đang hoạt động</Label>
+              <Switch
+                checked={active}
+                onCheckedChange={setActive}
+                disabled={activeToggleLocked}
+              />
+            </div>
+            {activeToggleLocked && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Chỉ Ất ơ mới có thể khoá hoạt động của tài khoản Quản trị viên khác.
+              </p>
+            )}
           </div>
         </div>
         <DialogFooter>

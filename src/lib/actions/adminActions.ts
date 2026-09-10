@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole, UnauthorizedError, ForbiddenError } from "@/lib/auth/session";
-import { canAssignRoles, canDeleteUsers } from "@/lib/auth/permissions";
+import { canAssignRoles, canDeleteUsers, canDeactivateUser } from "@/lib/auth/permissions";
 import {
   createAdjustmentSchema,
   editAdjustmentSchema,
@@ -289,6 +289,14 @@ export async function updateUserAction(raw: unknown): Promise<ActionResult> {
 
     if (!canAssignRoles(currentUser, previousRoles, input.roles)) {
       return fail("Chỉ Ất ơ mới có thể cấp/thu hồi quyền Quản trị viên.");
+    }
+
+    // Không áp dụng khi tạo mới (existing rỗng) — xem canDeactivateUser().
+    if (
+      existing &&
+      !canDeactivateUser(currentUser, { roles: previousRoles, active: existing.active }, input.active)
+    ) {
+      return fail("Chỉ Ất ơ mới có thể khoá hoạt động của tài khoản Quản trị viên khác.");
     }
 
     await updateUser(input);

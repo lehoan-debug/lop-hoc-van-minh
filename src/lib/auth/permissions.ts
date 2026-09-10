@@ -93,6 +93,25 @@ export function canAssignRoles(
   return canManageUsers(actor);
 }
 
+/**
+ * ADMIN thường không được tự khoá ("Đang hoạt động" -> tắt) một tài khoản
+ * ADMIN/SUPER_ADMIN khác — tránh 1 Admin âm thầm khoá quyền truy cập của
+ * Admin khác. Chỉ chặn đúng CHIỀU TẮT (target đang active=true, đổi sang
+ * false); bật lại (false -> true) vẫn cho phép vì không làm giảm quyền của
+ * ai. Không áp dụng cho tài khoản không thuộc tầng Admin (JUDGE/GVCN) —
+ * việc đó ADMIN thường vẫn khoá/mở bình thường.
+ */
+export function canDeactivateUser(
+  actor: Pick<AppUser, "roles">,
+  target: { roles: UserRole[]; active: boolean },
+  nextActive: boolean,
+): boolean {
+  const targetIsAdminTier = target.roles.some((r) => r === "ADMIN" || r === "SUPER_ADMIN");
+  const isTurningOff = target.active && !nextActive;
+  if (targetIsAdminTier && isTurningOff) return canManageAdminRoles(actor);
+  return true;
+}
+
 export function canManageCriteria(user: Pick<AppUser, "roles">): boolean {
   return hasAnyRole(user, ["ADMIN", "SUPER_ADMIN"]);
 }
