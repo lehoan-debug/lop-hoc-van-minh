@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Send, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Send, Loader2, CheckCircle2, AlertTriangle, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
@@ -41,6 +41,16 @@ export function GVCNReportCard({ teachers }: { teachers: HomeroomTeacherItem[] }
   const toggleAll = () => {
     setSelected(allSelected ? new Set() : new Set(allClassIds));
   };
+
+  const handleDownloadClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (selected.size === 0) {
+      e.preventDefault();
+      toast({ variant: "error", title: "Vui lòng chọn ít nhất 1 GVCN." });
+    }
+  };
+
+  const downloadHref = (format: "xlsx" | "docx") =>
+    `/api/admin/reports/homeroom/${format}?classIds=${Array.from(selected).join(",")}`;
 
   const handleSend = () => {
     if (selected.size === 0) {
@@ -143,12 +153,36 @@ export function GVCNReportCard({ teachers }: { teachers: HomeroomTeacherItem[] }
           </div>
         )}
 
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">Đã chọn {selected.size}/{allClassIds.length} lớp.</p>
-          <Button onClick={handleSend} disabled={isPending}>
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Gửi báo cáo đã chọn
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={downloadHref("xlsx")}
+              onClick={handleDownloadClick}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent",
+                selected.size === 0 && "opacity-50",
+              )}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Tải Excel
+            </a>
+            <a
+              href={downloadHref("docx")}
+              onClick={handleDownloadClick}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent",
+                selected.size === 0 && "opacity-50",
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Tải Word
+            </a>
+            <Button onClick={handleSend} disabled={isPending}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Gửi báo cáo đã chọn
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

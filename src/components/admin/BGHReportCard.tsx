@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTransition } from "react";
-import { Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Loader2, CheckCircle2, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -84,7 +84,21 @@ export function BGHReportCard({ defaultEmail }: { defaultEmail: string }) {
             ? `${emails.length} email sẽ nhận báo cáo.`
             : "Chưa có email nào hợp lệ."}
         </p>
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+          <a
+            href="/api/admin/reports/summary/xlsx"
+            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Tải Excel
+          </a>
+          <a
+            href="/api/admin/reports/summary/docx"
+            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Tải Word
+          </a>
           <Button onClick={handleSend} disabled={isPending}>
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Gửi báo cáo
