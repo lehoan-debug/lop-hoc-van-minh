@@ -3,7 +3,9 @@ import { canViewHomeroomClass } from "@/lib/auth/permissions";
 import {
   getClasses,
   getScores,
+  filterScores,
   getAdjustments,
+  filterAdjustments,
   getSettings,
   getCriteria,
   getScoringRounds,
@@ -61,14 +63,22 @@ export default async function HomeroomPage({
   const { from, to } = getMonthDateRange(yearMonth);
   const today = todayVN();
 
-  const [monthScores, monthAdjustments, settings, criteria, todayScores, allRounds] = await Promise.all([
-    getScores({ dateFrom: from, dateTo: to, classId: selectedClassId }),
-    getAdjustments({ dateFrom: from, dateTo: to, classId: selectedClassId }),
+  // Tải Scores/Adjustments của cả THÁNG (toàn bộ khối, chưa lọc theo
+  // lớp/classId) đúng MỘT LẦN mỗi sheet, rồi lọc lại trong JS cho từng "view"
+  // (lớp mình phụ trách / hôm nay / cả khối) — trước đây gọi getScores()/
+  // getAdjustments() riêng cho từng view (có `gradeScores`/`gradeAdjustments`
+  // còn nằm NGOÀI Promise.all, chạy tuần tự SAU khi Promise.all xong), mỗi
+  // lần lại tải lại toàn bộ sheet nên cộng dồn độ trễ round-trip.
+  const [monthScoresRaw, monthAdjustmentsRaw, settings, criteria, allRounds] = await Promise.all([
+    getScores({ dateFrom: from, dateTo: to }),
+    getAdjustments({ dateFrom: from, dateTo: to }),
     getSettings(),
     getCriteria(),
-    getScores({ dateFrom: today, dateTo: today, classId: selectedClassId }),
     getScoringRounds(),
   ]);
+  const monthScores = filterScores(monthScoresRaw, { classId: selectedClassId });
+  const monthAdjustments = filterAdjustments(monthAdjustmentsRaw, { classId: selectedClassId });
+  const todayScores = filterScores(monthScoresRaw, { dateFrom: today, dateTo: today, classId: selectedClassId });
   // Tên Đợt chấm để hiện trong "Kết quả chi tiết" thay vì chỉ ngày/giờ thô —
   // GVCN cần biết đây là kết quả của đợt nào (vd. "Đợt chấm sáng 08/09"),
   // không phải một dòng log kỹ thuật.
@@ -77,7 +87,7 @@ export default async function HomeroomPage({
 
   const gradeClasses = allClasses.filter((c) => c.grade === classInfo.grade);
   const isUnconfirmed = settings.DAILY_SCORE_COMBINE_MODE === "UNCONFIRMED";
-  const gradeScores = await getScores({ dateFrom: from, dateTo: to, grade: classInfo.grade });
+  const gradeScores = filterScores(monthScoresRaw, { grade: classInfo.grade });
 
   // Công thức điểm ngày CHƯA được BTC xác nhận -> không được hiện "xếp hạng"
   // như thể là chính thức (đúng cách /admin/ranking đang xử lý — chuyển sang
@@ -94,7 +104,9 @@ export default async function HomeroomPage({
     });
     dailySummary = summaries.find((s) => s.classId === selectedClassId) ?? null;
   } else {
-    const gradeAdjustments = await getAdjustments({ dateFrom: from, dateTo: to });
+    // Không lọc classId — cùng phạm vi mà bản gọi getAdjustments({dateFrom,
+    // dateTo}) cũ trả về, nay lấy thẳng từ dữ liệu đã tải ở trên.
+    const gradeAdjustments = monthAdjustmentsRaw;
     const rankingList = computeMonthlyRankingForGrade({
       classes: gradeClasses,
       scoresOfMonth: gradeScores,

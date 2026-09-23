@@ -495,21 +495,32 @@ export interface ScoreFilter {
   includeDeleted?: boolean;
 }
 
+/** Áp bộ lọc `ScoreFilter` lên một mảng ScoreRecord ĐÃ có sẵn trong bộ nhớ —
+ * tách riêng khỏi `getScores()` để các trang cần nhiều "view" khác nhau của
+ * cùng khoảng dữ liệu (vd. theo ngày/theo tháng/theo Đợt chấm trong cùng 1
+ * lượt render) có thể gọi Google Sheets API ĐÚNG MỘT LẦN rồi lọc lại nhiều
+ * lần trong JS, thay vì gọi `getScores()` nhiều lần (mỗi lần lại tải lại
+ * TOÀN BỘ sheet Scores — xem `getAllRows(..., { cache: false })` bên dưới —
+ * là nguyên nhân chính khiến các trang Admin/GVCN/Giám khảo phản hồi chậm). */
+export function filterScores(scores: ScoreRecord[], filter: ScoreFilter = {}): ScoreRecord[] {
+  let result = scores;
+  if (!filter.includeDeleted) result = result.filter((s) => !s.deletedAt);
+  if (filter.dateFrom) result = result.filter((s) => s.date >= filter.dateFrom!);
+  if (filter.dateTo) result = result.filter((s) => s.date <= filter.dateTo!);
+  if (filter.session) result = result.filter((s) => s.session === filter.session);
+  if (filter.grade) result = result.filter((s) => s.grade === filter.grade);
+  if (filter.classId) result = result.filter((s) => s.classId === filter.classId);
+  if (filter.judgeEmail)
+    result = result.filter((s) => s.judgeEmail === filter.judgeEmail);
+  if (filter.roundId) result = result.filter((s) => s.roundId === filter.roundId);
+  return result;
+}
+
 export async function getScores(filter: ScoreFilter = {}): Promise<
   ScoreRecord[]
 > {
   const rows = await getAllRows(SHEET_NAMES.SCORES, { cache: false });
-  let scores = rows.map(rowToScore);
-  if (!filter.includeDeleted) scores = scores.filter((s) => !s.deletedAt);
-  if (filter.dateFrom) scores = scores.filter((s) => s.date >= filter.dateFrom!);
-  if (filter.dateTo) scores = scores.filter((s) => s.date <= filter.dateTo!);
-  if (filter.session) scores = scores.filter((s) => s.session === filter.session);
-  if (filter.grade) scores = scores.filter((s) => s.grade === filter.grade);
-  if (filter.classId) scores = scores.filter((s) => s.classId === filter.classId);
-  if (filter.judgeEmail)
-    scores = scores.filter((s) => s.judgeEmail === filter.judgeEmail);
-  if (filter.roundId) scores = scores.filter((s) => s.roundId === filter.roundId);
-  return scores;
+  return filterScores(rows.map(rowToScore), filter);
 }
 
 export async function getScore(submissionId: string): Promise<ScoreRecord | null> {
@@ -828,17 +839,26 @@ export interface AdjustmentFilter {
   includeDeleted?: boolean;
 }
 
+/** Xem ghi chú tại `filterScores()` — cùng lý do: cho phép lọc lại nhiều lần
+ * trong JS từ một lần tải sheet Adjustments duy nhất. */
+export function filterAdjustments(
+  items: AdjustmentRecord[],
+  filter: AdjustmentFilter = {},
+): AdjustmentRecord[] {
+  let result = items;
+  if (!filter.includeDeleted) result = result.filter((a) => !a.deletedAt);
+  if (filter.dateFrom) result = result.filter((a) => a.date >= filter.dateFrom!);
+  if (filter.dateTo) result = result.filter((a) => a.date <= filter.dateTo!);
+  if (filter.classId) result = result.filter((a) => a.classId === filter.classId);
+  if (filter.type) result = result.filter((a) => a.type === filter.type);
+  return result;
+}
+
 export async function getAdjustments(
   filter: AdjustmentFilter = {},
 ): Promise<AdjustmentRecord[]> {
   const rows = await getAllRows(SHEET_NAMES.ADJUSTMENTS, { cache: false });
-  let items = rows.map(rowToAdjustment);
-  if (!filter.includeDeleted) items = items.filter((a) => !a.deletedAt);
-  if (filter.dateFrom) items = items.filter((a) => a.date >= filter.dateFrom!);
-  if (filter.dateTo) items = items.filter((a) => a.date <= filter.dateTo!);
-  if (filter.classId) items = items.filter((a) => a.classId === filter.classId);
-  if (filter.type) items = items.filter((a) => a.type === filter.type);
-  return items;
+  return filterAdjustments(rows.map(rowToAdjustment), filter);
 }
 
 export interface CreateAdjustmentInput {

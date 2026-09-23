@@ -18,19 +18,23 @@ export default async function RoundClassPickerPage({
   const round = await getScoringRound(roundId);
   if (!round) notFound();
 
-  const assignment = await isUserAssignedToRound(roundId, user.email);
+  // Không phụ thuộc lẫn nhau — chạy song song thay vì 3 lượt gọi Google
+  // Sheets API tuần tự (mỗi await trước đây chờ xong cái trước mới bắt đầu).
+  const [assignment, allClasses, scores] = await Promise.all([
+    isUserAssignedToRound(roundId, user.email),
+    getClasses({ activeOnly: true }),
+    getScores({ roundId }),
+  ]);
   if (!assignment) {
     redirect("/judge");
   }
 
-  const allClasses = await getClasses({ activeOnly: true });
   const classes = allClasses.filter(
     (c) =>
       isClassInRoundScope(round, c.classId, c.grade) &&
       isClassInAssignmentScope(assignment, c.classId, c.grade),
   );
 
-  const scores = await getScores({ roundId });
   const doneClassIds = scores.map((s) => s.classId);
 
   return (

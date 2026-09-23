@@ -1,6 +1,15 @@
 import { ClipboardList, School, AlertTriangle, TrendingUp, Award, ThumbsDown, FileSpreadsheet, Mail } from "lucide-react";
 import Link from "next/link";
-import { getClasses, getScores, getAdjustments, getUsers, getScoringRounds, getSettings } from "@/lib/google/sheets";
+import {
+  getClasses,
+  getScores,
+  filterScores,
+  getAdjustments,
+  filterAdjustments,
+  getUsers,
+  getScoringRounds,
+  getSettings,
+} from "@/lib/google/sheets";
 import { todayVN, currentYearMonthVN, getMonthDateRange, getLastNDaysRange, listDatesInRange } from "@/lib/timezone/timezone";
 import {
   computeDashboardCards,
@@ -35,18 +44,35 @@ export default async function AdminDashboardPage({
   const yearMonth = currentYearMonthVN();
   const { from: monthFrom, to: monthTo } = getMonthDateRange(yearMonth);
 
-  const [allClasses, allJudges, scoresOfDate, adjustmentsOfDate, allRounds, trendScores, settings, monthScores, monthAdjustments] =
+  // Tải TOÀN BỘ sheet Scores/Adjustments đúng MỘT LẦN mỗi sheet, rồi lọc lại
+  // nhiều lần trong JS cho từng "view" (theo ngày/theo 7 ngày/theo tháng/theo
+  // Đợt chấm) — trước đây mỗi view gọi getScores()/getAdjustments() riêng
+  // (mỗi lần lại tải lại toàn bộ sheet vì `getAllRows(..., { cache: false })`),
+  // khiến trang này gọi Google Sheets API tới hơn chục lần cho 1 lượt tải
+  // trang. `filterScores`/`filterAdjustments` áp đúng cùng logic lọc mà
+  // `getScores`/`getAdjustments` dùng, nên kết quả không đổi.
+  const [allClasses, allJudges, allScoresRaw, allAdjustmentsRaw, allRounds, settings] =
     await Promise.all([
       getClasses({ activeOnly: true }),
       getUsers(),
-      getScores({ dateFrom: date, dateTo: date, grade, classId, judgeEmail, session: sessionFilter }),
-      getAdjustments({ dateFrom: date, dateTo: date, classId }),
+      getScores({}),
+      getAdjustments({}),
       getScoringRounds(),
-      getScores({ dateFrom: trendRange.from, dateTo: trendRange.to }),
       getSettings(),
-      getScores({ dateFrom: monthFrom, dateTo: monthTo }),
-      getAdjustments({ dateFrom: monthFrom, dateTo: monthTo }),
     ]);
+
+  const scoresOfDate = filterScores(allScoresRaw, {
+    dateFrom: date,
+    dateTo: date,
+    grade,
+    classId,
+    judgeEmail,
+    session: sessionFilter,
+  });
+  const adjustmentsOfDate = filterAdjustments(allAdjustmentsRaw, { dateFrom: date, dateTo: date, classId });
+  const trendScores = filterScores(allScoresRaw, { dateFrom: trendRange.from, dateTo: trendRange.to });
+  const monthScores = filterScores(allScoresRaw, { dateFrom: monthFrom, dateTo: monthTo });
+  const monthAdjustments = filterAdjustments(allAdjustmentsRaw, { dateFrom: monthFrom, dateTo: monthTo });
 
   const classesInScope = allClasses.filter((c) => !grade || c.grade === grade);
   const cards = computeDashboardCards({
@@ -90,14 +116,12 @@ export default async function AdminDashboardPage({
     })
     .slice(0, 5);
 
-  const roundItems: DashboardRoundItem[] = await Promise.all(
-    relevantRounds.map(async ({ round, effectiveStatus }) => {
-      const classesInRoundScope = allClasses.filter((c) => isClassInRoundScope(round, c.classId, c.grade));
-      const scoresOfRound = await getScores({ roundId: round.roundId });
-      const progress = computeRoundClassProgress(classesInRoundScope, scoresOfRound);
-      return { round, effectiveStatus, ...progress };
-    }),
-  );
+  const roundItems: DashboardRoundItem[] = relevantRounds.map(({ round, effectiveStatus }) => {
+    const classesInRoundScope = allClasses.filter((c) => isClassInRoundScope(round, c.classId, c.grade));
+    const scoresOfRound = filterScores(allScoresRaw, { roundId: round.roundId });
+    const progress = computeRoundClassProgress(classesInRoundScope, scoresOfRound);
+    return { round, effectiveStatus, ...progress };
+  });
 
   return (
     <div>

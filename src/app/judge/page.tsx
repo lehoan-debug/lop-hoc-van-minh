@@ -7,6 +7,7 @@ import {
   getScoringRounds,
   getClasses,
   getScores,
+  filterScores,
 } from "@/lib/google/sheets";
 import { getEffectiveRoundStatus } from "@/lib/rounds/roundStatus";
 import { isClassInRoundScope, isClassInAssignmentScope } from "@/lib/rounds/eligibility";
@@ -32,36 +33,39 @@ export default async function JudgePage() {
     );
   }
 
-  const [assignments, allRounds, allClasses] = await Promise.all([
+  const [assignments, allRounds, allClasses, allScores] = await Promise.all([
     getRoundAssignmentsForUser(user.email),
     getScoringRounds(),
     getClasses({ activeOnly: true }),
+    // Tải TOÀN BỘ sheet Scores đúng MỘT LẦN thay vì gọi getScores({ roundId })
+    // riêng cho từng Đợt chấm được phân công (N+1 lượt gọi Google Sheets API
+    // — nguyên nhân chính khiến trang chủ Giám khảo phản hồi chậm khi 1 người
+    // được giao nhiều Đợt chấm). Lọc theo roundId trong JS bên dưới.
+    getScores({}),
   ]);
 
   const assignedRoundIds = new Set(assignments.map((a) => a.roundId));
   const myRounds = allRounds.filter((r) => assignedRoundIds.has(r.roundId));
 
   const now = new Date();
-  const items: RoundWithProgress[] = await Promise.all(
-    myRounds.map(async (round) => {
-      const assignment = assignments.find((a) => a.roundId === round.roundId)!;
-      const classesInScope = allClasses.filter(
-        (c) =>
-          isClassInRoundScope(round, c.classId, c.grade) &&
-          isClassInAssignmentScope(assignment, c.classId, c.grade),
-      );
-      const scores = await getScores({ roundId: round.roundId });
-      const doneClassIds = new Set(scores.map((s) => s.classId));
-      const doneCount = classesInScope.filter((c) => doneClassIds.has(c.classId)).length;
+  const items: RoundWithProgress[] = myRounds.map((round) => {
+    const assignment = assignments.find((a) => a.roundId === round.roundId)!;
+    const classesInScope = allClasses.filter(
+      (c) =>
+        isClassInRoundScope(round, c.classId, c.grade) &&
+        isClassInAssignmentScope(assignment, c.classId, c.grade),
+    );
+    const scores = filterScores(allScores, { roundId: round.roundId });
+    const doneClassIds = new Set(scores.map((s) => s.classId));
+    const doneCount = classesInScope.filter((c) => doneClassIds.has(c.classId)).length;
 
-      return {
-        round,
-        effectiveStatus: getEffectiveRoundStatus(round, now),
-        assignedClassesCount: classesInScope.length,
-        doneCount,
-      };
-    }),
-  );
+    return {
+      round,
+      effectiveStatus: getEffectiveRoundStatus(round, now),
+      assignedClassesCount: classesInScope.length,
+      doneCount,
+    };
+  });
 
   items.sort((a, b) => a.round.startsAt.localeCompare(b.round.startsAt));
 

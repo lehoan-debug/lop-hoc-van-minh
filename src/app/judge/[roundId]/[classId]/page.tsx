@@ -29,14 +29,23 @@ export default async function RoundScoringPage({
   if (!canAccessScoring(user)) redirect("/judge");
 
   const { roundId, classId } = await params;
-  const round = await getScoringRound(roundId);
+
+  // Không phụ thuộc lẫn nhau — chạy song song thay vì tới 6 lượt gọi Google
+  // Sheets API tuần tự. Đây là màn hình Giám khảo mở MỖI LẦN chấm 1 lớp, nên
+  // là nơi ảnh hưởng nhiều nhất tới cảm nhận "hệ thống phản hồi chậm".
+  const [round, classes, assignment, existingScore, allCriteria, scores] = await Promise.all([
+    getScoringRound(roundId),
+    getClasses({ activeOnly: true }),
+    isUserAssignedToRound(roundId, user.email),
+    checkDuplicateRoundScore({ roundId, classId }),
+    getCriteria({ activeOnly: true }),
+    getScores({ roundId }),
+  ]);
   if (!round) notFound();
 
-  const classes = await getClasses({ activeOnly: true });
   const klass = classes.find((c) => c.classId === classId);
   if (!klass) notFound();
 
-  const assignment = await isUserAssignedToRound(roundId, user.email);
   const eligibility = checkRoundEligibility({
     round,
     assignment,
@@ -44,9 +53,6 @@ export default async function RoundScoringPage({
     grade: klass.grade,
   });
 
-  const existingScore = await checkDuplicateRoundScore({ roundId, classId });
-
-  const allCriteria = await getCriteria({ activeOnly: true });
   const criteria = allCriteria
     .filter((c) => criterionAppliesToGrade(c, klass.grade) && isCriterionInRoundScope(round, c.criterionId))
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -59,7 +65,6 @@ export default async function RoundScoringPage({
     const assignedClasses = classes
       .filter((c) => isClassInRoundScope(round, c.classId, c.grade) && isClassInAssignmentScope(assignment, c.classId, c.grade))
       .sort((a, b) => (a.grade === b.grade ? a.sortOrder - b.sortOrder : a.grade.localeCompare(b.grade)));
-    const scores = await getScores({ roundId });
     const doneClassIds = scores.map((s) => s.classId);
     const nextClassId = findNextUnscoredClass(
       assignedClasses.map((c) => c.classId),
