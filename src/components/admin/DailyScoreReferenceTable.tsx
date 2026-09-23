@@ -1,3 +1,6 @@
+"use client";
+
+import { useRequestClassDetail } from "@/components/admin/RankingViewSwitcher";
 import type { ClassDailyScoreSummary } from "@/lib/admin/aggregate";
 
 const fmt = (v: number | null) => (v !== null ? v.toFixed(2) : "—");
@@ -7,6 +10,8 @@ export function DailyScoreReferenceTable({
 }: {
   summaries: ClassDailyScoreSummary[];
 }) {
+  const requestClassDetail = useRequestClassDetail();
+
   return (
     <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
       <table className="w-full min-w-[720px] text-sm">
@@ -24,7 +29,16 @@ export function DailyScoreReferenceTable({
         <tbody>
           {summaries.map((s) => (
             <tr key={s.classId} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="px-3 py-2 font-medium">{s.className}</td>
+              <td className="px-3 py-2 font-medium">
+                <button
+                  type="button"
+                  onClick={() => requestClassDetail(s.classId)}
+                  className="underline-offset-2 hover:underline"
+                  title="Xem chi tiết theo lớp"
+                >
+                  {s.className}
+                </button>
+              </td>
               <td className="px-3 py-2">{s.daysWithMorning}</td>
               <td className="px-3 py-2">{s.daysWithAfternoon}</td>
               <td className="px-3 py-2">{fmt(s.avgMorning)}</td>

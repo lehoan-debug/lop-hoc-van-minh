@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useTransition } from "react";
 import { AlertCircle, Trophy, Gavel, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +17,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { formatDateTimeVN } from "@/lib/timezone/timezone";
 import { saveManualRankingDecisionAction } from "@/lib/actions/adminActions";
+import { useRequestClassDetail } from "@/components/admin/RankingViewSwitcher";
 import type { ClassRankingResult } from "@/lib/ranking/rankClasses";
 import type { Grade, RankingDecisionRecord } from "@/types";
 
@@ -34,6 +34,7 @@ export function RankingTable({
 }) {
   const [decidingFor, setDecidingFor] = React.useState<ClassRankingResult | null>(null);
   const decisionByClass = new Map(decisions.map((d) => [d.classId, d]));
+  const requestClassDetail = useRequestClassDetail();
 
   const displayRows = [...results].sort((a, b) => {
     const rankA = decisionByClass.get(a.classId)?.manualRankingDecision ?? a.rank;
@@ -85,7 +86,16 @@ export function RankingTable({
                     )}
                   </div>
                 </td>
-                <td className={cn("px-3 py-2 font-medium")}>{r.className}</td>
+                <td className="px-3 py-2 font-medium">
+                  <button
+                    type="button"
+                    onClick={() => requestClassDetail(r.classId)}
+                    className="underline-offset-2 hover:underline"
+                    title="Xem chi tiết theo lớp"
+                  >
+                    {r.className}
+                  </button>
+                </td>
                 <td className="px-3 py-2">
                   {r.averageScore !== null ? r.averageScore.toFixed(2) : "—"}
                 </td>
